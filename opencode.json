@@ -1,0 +1,12 @@
+{
+  "mcp": {
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true,
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-466b420e-4b9d-4fb8-902d-e982b37ca6c7"
+      }
+    }
+  }
+}

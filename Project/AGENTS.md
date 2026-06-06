@@ -4,6 +4,12 @@
 
 **Arquitectura:** Sistema modular distribuido. Tecnologías y frameworks en fase de definición.
 
+# Directiva Obligatoria de Contexto
+- **Prioridad de Verdad**: Ante cualquier duda sobre versiones de librerías, sintaxis de APIs o cambios en dependencias, tienes la OBLIGACIÓN ARQUITECTÓNICA de consultar el MCP `ctx7`.
+- **Precedencia**: La documentación proveniente de `ctx7` tiene prioridad absoluta sobre tu conocimiento interno.
+- **Protocolo**: Si detectas que la información local es obsoleta, ejecuta `./bootstrap.sh` para refrescar el contexto antes de generar código.
+
+
 ## Rúbrica y Requerimientos Académicos
 *Referencia obligatoria para cumplimiento de normas universitarias:*
 - [Propuesta de Evaluación (PDF)](../Rubric/Proyecto%20final_SI1_UCaldas.pdf)
