@@ -25,6 +25,9 @@
 - [`/n8n`](./n8n/AGENTS.md) — Motor de orquestación de flujos de trabajo.
 - [`/wearos`](./wearos/AGENTS.md) — Adquisición de telemetría IoT.
 
+## Diagrama Arquitectónico de Referencia
+- [Diagrama UML del Sistema](../Documents/Diagrama%20UML.md) — Vista general de la arquitectura, componentes y relaciones del sistema. **Consulta obligatoria antes de cualquier modificación estructural.**
+
 ## Recursos de Referencia para Agentes
 *Consultar siempre para alineación con estándares de desarrollo con agentes:*
 - [Agentes MD Specification](https://agents.md/)
