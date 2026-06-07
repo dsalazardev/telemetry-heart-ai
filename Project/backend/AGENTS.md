@@ -142,33 +142,35 @@ Backend ◀─── REST/JSON ──▶ WearOS (telemetría entrante)
 
 ## Herencia Usuario → Paciente / Medico
 
-SQLModel no tiene soporte nativo para herencia de tablas. Se implementa con **joined table inheritance** de SQLAlchemy:
+SQLModel no tiene soporte nativo para herencia de tablas. Se implementa con **FK simple (1:1)** — modelos separados unidos por ForeignKey:
 
 ```python
 # models/usuario.py
 class Usuario(SQLModel, table=True):
     __tablename__ = "usuarios"
-    id: int = Field(primary_key=True)
-    documento: str
+    id: Optional[int] = Field(default=None, primary_key=True)
+    documento: str = Field(unique=True, index=True)
     nombres: str
     apellidos: str
-    correo: str
+    correo: str = Field(unique=True, index=True)
     password: str
     telefono: str
     activo: bool = True
-    tipo: str = Field(index=True)  # "paciente" | "medico"
+    tipo: str = Field(index=True)
 
-class Paciente(Usuario, table=True):
+class Paciente(SQLModel, table=True):
     __tablename__ = "pacientes"
-    id: int = Field(foreign_key="usuarios.id", primary_key=True)
+    id: Optional[int] = Field(default=None, foreign_key="usuarios.id", primary_key=True)
     fechaNacimiento: date
+    usuario: Optional[Usuario] = Relationship()
 
-class Medico(Usuario, table=True):
+class Medico(SQLModel, table=True):
     __tablename__ = "medicos"
-    id: int = Field(foreign_key="usuarios.id", primary_key=True)
+    id: Optional[int] = Field(default=None, foreign_key="usuarios.id", primary_key=True)
     especialidad: str
     licencia: str
     telegramChatId: str
+    usuario: Optional[Usuario] = Relationship()
 ```
 
 ## Decisiones Arquitectónicas

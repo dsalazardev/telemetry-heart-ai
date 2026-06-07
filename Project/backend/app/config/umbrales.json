@@ -1,0 +1,14 @@
+{
+  "umbrales": {
+    "fc_max": 120,
+    "fc_min": 40,
+    "spo2_min": 90,
+    "oldpeak_max": 2.0
+  },
+  "ventana_evento_minutos": 5,
+  "ventana_evento_anomalia_minutos": 1,
+  "clasificacion": {
+    "bajo": 0.3,
+    "medio": 0.7
+  }
+}
