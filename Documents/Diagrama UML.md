@@ -41,6 +41,8 @@ classDiagram
   class Lectura {
     <<microservice>>
     -_id: ObjectId
+    -age: Int
+    -sex: Int
     -cp: Int
     -trestbps: Int
     -chol: Int
@@ -52,6 +54,7 @@ classDiagram
     -slope: Int
     -ca: Int
     -thal: Int
+    -target: Boolean  // null=pendiente, true=enfermo, false=sano
     -evaluacion: Evaluacion
     + exportarVector(): List~Float~
   }
@@ -108,6 +111,7 @@ classDiagram
     -explicacionClinica: String
     -telegramEnviado: Boolean
     -atendida: Boolean
+    -diagnosticoConfirmado: Boolean  // null=pendiente, true=enfermo, false=sano
     -fechaEmision: DateTime
     -fechaAtencion: DateTime
     -workflow: Workflow
