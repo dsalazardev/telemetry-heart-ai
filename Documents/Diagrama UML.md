@@ -1,15 +1,8 @@
 # Diagrama UML Original — Sistema de Triaje Cardiovascular IoT
 
-**Fecha de conversión:** 2026-06-06
-**Version:** 2.0 — Refactor de dominio
-**Nota:** UML de clases del dominio. No incluye decisiones de infraestructura.
-
----
-
-**Leyenda de estereotipos:**
-- `<<backend>>` — Entidad persistida en el modulo Backend (API REST + SQL)
-- `<<microservice>>` — Entidad procesada en el Microservicio de IA (LangChain + ML)
-- `<<interface>>` — Contrato compartido entre modulos
+**Fecha:** 2026-06-07
+**Fuente:** Exportado desde Lucidchart (documento 2547e999-8026-4161-ac86-f46c584d174c)
+**Nota:** Convertido desde PDF sin modificaciones.
 
 ---
 
@@ -17,69 +10,32 @@
 classDiagram
   direction TB
 
-  %% ── Estereotipos y leyenda ──
-  class BackendNote {
-    <<Nota>>
-    Las clases <<backend>> se persisten
-    y exponen via API REST
-  }
-  class MicroNote {
-    <<Nota>>
-    Las clases <<microservice>> son
-    internas del pipeline de IA
-  }
-
-  %% ── Usuarios ──
   class Usuario {
     <<backend>>
     -_id: ObjectId
     -documento: String
     -nombres: String
     -apellidos: String
+    -correo: String
+    -password: String
     -telefono: String
     -activo: Boolean
   }
 
-  class Paciente {
-    <<backend>>
-    -fechaNacimiento: Date
-    -dispositivos: List~Dispositivo~
-    -perfil: Perfil
-    -evaluaciones: List~Evaluacion~
-    -triajes: List~Triaje~
-    -historiales: List~Historial~
-    +generarAlerta() Alerta
-  }
-
-  class Medico {
-    <<backend>>
-    -especialidad: String
-    -licencia: String
-    -telegramChatId: String
-    -passwordHash: String
-    -triajes: List~Triaje~
-    +atenderAlerta(id ObjectId) void
-    +listarPendientes() List~Triaje~
-  }
-
-  %% ── Perfil y Evaluacion ──
-  class Perfil {
+  class Alerta {
     <<backend>>
     -_id: ObjectId
-    -edad: Int
-    -sexo: String
-    -tipoSangre: String
-    -alergias: String
+    -tipo: String
+    -mensaje: String
+    -leida: Boolean
+    -atendida: Boolean
+    -fechaEmision: DateTime
+    -fechaAtencion: DateTime
     -paciente: Paciente
-  }
-
-  class Evaluacion {
-    <<microservice>>
-    -_id: ObjectId
-    -fechaEvaluacion: DateTime
-    -origenDatos: String
-    -lectura: Lectura
-    -prediccion: Prediccion
+    -medico: Medico
+    -triaje: Triaje
+    + marcarLeida(): void
+    + asignarMedico(medico: Medico): void
   }
 
   class Lectura {
@@ -96,23 +52,53 @@ classDiagram
     -slope: Int
     -ca: Int
     -thal: Int
-    +exportarVector() List~Float~
+    -evaluacion: Evaluacion
+    + exportarVector(): List~Float~
   }
 
-  class Prediccion {
+  class Evaluacion {
     <<microservice>>
     -_id: ObjectId
-    -versionModelo: String
-    -probabilidad: Float
-    -clasificacion: String
-    -importanciaVariables: JSON
-    -tiempoMs: Float
-    -fecha: DateTime
-    -metadataTecnica: JSON
-    +interpretarResultado() String
+    -fechaEvaluacion: DateTime
+    -origenDatos: String
+    -lectura: Lectura
+    -prediccion: Prediccion
   }
 
-  %% ── Triaje y alertas ──
+  class Medico {
+    <<backend>>
+    -especialidad: String
+    -licencia: String
+    -telegramChatId: String
+    -triajes: List~Triaje~
+    -alertas: LIst~Alerta~
+    + atenderAlerta(id ObjectId): void
+    + listarPendientes(): List~Triaje~
+  }
+
+  class Perfil {
+    <<backend>>
+    -_id: ObjectId
+    -edad: Int
+    -sexo: String
+    -tipoSangre: String
+    -alergias: String
+    -paciente: Paciente
+  }
+
+  class Paciente {
+    <<backend>>
+    -fechaNacimiento: Date
+    -perfil: Perfil
+    -dispositivos: List~Dispositivo~
+    -evaluaciones: List~Evaluacion~
+    -triajes: List~Triaje~
+    -historiales: List~Historial~
+    -alertas: List~Alerta~
+    + registrarIngreso(): void
+    + generarAlertas(): List
+  }
+
   class Triaje {
     <<backend>>
     -_id: ObjectId
@@ -127,25 +113,10 @@ classDiagram
     -workflow: Workflow
     -paciente: Paciente
     -medico: Medico
+    -alerta: Alerta
     -logs: List~Log~
-    +notificarTelegram() Boolean
-    +escalarUrgencia() void
-  }
-
-  class Alerta {
-    <<backend>>
-    -_id: ObjectId
-    -tipo: String
-    -mensaje: String
-    -leida: Boolean
-    -atendida: Boolean
-    -fechaEmision: DateTime
-    -fechaAtencion: DateTime
-    -paciente: Paciente
-    -medico: Medico
-    -triaje: Triaje
-    +marcarLeida() void
-    +asignarMedico(m Medico) void
+    + notificarTelegram(): Boolean
+    + escalarUrgencia(): void
   }
 
   class Log {
@@ -157,10 +128,37 @@ classDiagram
     -exitoso: Boolean
     -errorMsg: String
     -triaje: Triaje
-    +registrar() void
+    + registrar(): void
   }
 
-  %% ── Clinico ──
+  class Prediccion {
+    <<microservice>>
+    -_id: ObjectId
+    -versionModelo: String
+    -probabilidad: Float
+    -clasificacion: String
+    -importanciaVariables: JSON
+    -tiempoMs: Float
+    -fecha: DateTime
+    -metadataTecnica: JSON
+    -evaluacion: Evaluacion
+    -documentos: List~Documento~
+    + interpretarResultado(): String
+  }
+
+  class Documento {
+    <<microservice>>
+    -_id: ObjectId
+    -titulo: String
+    -contenido: String
+    -embedding: List~Float~
+    -fuente: String
+    -fechaIndexacion: DateTime
+    -activo: Boolean
+    -prediccion: Prediccion
+    + buscarSimilares(query String): List~Documento~
+  }
+
   class Patologia {
     <<backend>>
     -_id: ObjectId
@@ -170,7 +168,7 @@ classDiagram
     -factorRiesgoCardiaco: Boolean
     -pesoRiesgoModelo: Float
     -historiales: List~Historial~
-    +esFactorDeRiesgo() Boolean
+    + esFactorDeRiesgo(): Boolean
   }
 
   class Historial {
@@ -184,10 +182,9 @@ classDiagram
     -ultimaRevision: DateTime
     -paciente: Paciente
     -patologia: Patologia
-    +actualizarTratamiento() void
+    + actualizarTratamiento(): void
   }
 
-  %% ── Telemetria ──
   class Dispositivo {
     <<backend>>
     -_id: ObjectId
@@ -199,8 +196,38 @@ classDiagram
     -ultimoHeartbeat: DateTime
     -paciente: Paciente
     -telemetrias: List~Telemetria~
-    +enviarTelemetria() void
-    +revocarToken() void
+    + enviarTelemetria(): void
+    + revocarToken(): void
+  }
+
+  class Evento {
+    <<backend>>
+    -_id: ObjectId
+    -tipo: String
+    -ventanaInicio: DateTime
+    -ventanaFin: DateTime
+    -lecturas: Int
+    -valorAgregado: JSON
+    -workflow: Workflow
+    -telemetrias: List~Telemetria~
+    + evaluarUmbrales(): Boolean
+  }
+
+  class Workflow {
+    <<Interface>>
+    + ejecutarFlujo (triggerTipo: String, payload: JSON): JSON
+    + notificarUrgencia (medico: Medico, mensaje: String): Boolean
+  }
+
+  class Adapter {
+    <<microservice>>
+    -_id: ObjectId
+    -proveedor: String
+    -endpoint: String
+    -flujo: Object
+    -token: String
+    + ejecutarFlujo(triggerTipo: String, payload: JSON): JSON
+    + notificarUrgencia (medico: Medico, mensaje: String): Boolean
   }
 
   class Telemetria {
@@ -213,50 +240,8 @@ classDiagram
     -estadoProcesamiento: String
     -dispositivo: Dispositivo
     -evento: Evento
-    +validar() Boolean
-    +enriquecerConLab() void
-  }
-
-  class Evento {
-    <<backend>>
-    -_id: ObjectId
-    -tipo: String
-    -ventanaInicio: DateTime
-    -ventanaFin: DateTime
-    -lecturas: Int
-    -valorAgregado: JSON
-    -workflow: Workflow
-    +evaluarUmbrales() Boolean
-  }
-
-  %% ── Workflow ──
-  class Workflow {
-    <<interface>>
-    +ejecutarFlujo(triggerTipo String, payload JSON) JSON
-    +notificarUrgencia(medicoChatId String, mensaje String) Boolean
-  }
-
-  class Adapter {
-    <<microservice>>
-    -_id: ObjectId
-    -proveedor: String
-    -endpoint: String
-    -flujo: Object
-    -token: String
-    +ejecutarFlujo(triggerTipo String, payload JSON) JSON
-    +notificarUrgencia(medico Medico, mensaje String) Boolean
-  }
-
-  class Documento {
-    <<microservice>>
-    -_id: ObjectId
-    -titulo: String
-    -contenido: String
-    -embedding: List~Float~
-    -fuente: String
-    -fechaIndexacion: DateTime
-    -activo: Boolean
-    +buscarSimilares(query String) List~Documento~
+    + validar(): Boolean
+    + enriquecerConLab(): void
   }
 
   %% ── Relaciones ──
@@ -274,9 +259,12 @@ classDiagram
   Paciente "1" --> "*" Historial : historiales
   Paciente "1" --> "*" Alerta : alertas
 
-  %% Evaluacion, Lectura y Prediccion
+  %% Evaluacion, Lectura, Prediccion
   Evaluacion "1" --> "1" Lectura : lectura
   Evaluacion "1" --> "1" Prediccion : prediccion
+
+  %% Prediccion y RAG
+  Prediccion "1" --> "*" Documento : consulta
 
   %% Medico
   Medico "1" --> "*" Triaje : triajes
@@ -292,10 +280,10 @@ classDiagram
   %% Patologia
   Patologia "1" --> "*" Historial : historiales
 
-  %% Dispositivo y Telemetria
+  %% Dispositivo
   Dispositivo "1" --> "*" Telemetria : telemetrias
 
-  %% Telemetria y Evento
-  Telemetria "1" --> "*" Evento : genera
+  %% Evento y Telemetria
+  Evento "1" --> "*" Telemetria : agrupa
   Evento "1" --> "1" Workflow : procesa
 ```
