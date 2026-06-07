@@ -28,6 +28,13 @@
 ## Diagrama Arquitectónico de Referencia
 - [Diagrama UML del Sistema](../Documents/Diagrama%20UML.md) — Vista general de la arquitectura, componentes y relaciones del sistema. **Consulta obligatoria antes de cualquier modificación estructural.**
 
+## Stack Tecnológico Definido
+- [FastAPI Documentation](https://fastapi.tiangolo.com/) — Framework web del backend (v0.136.3)
+- [SQLModel Documentation](https://sqlmodel.tiangolo.com/) — ORM para modelos de datos (v0.0.37)
+- [Pydantic v2](https://docs.pydantic.dev/) — Validación y schemas (v2.12.2)
+- [SimPy Documentation](https://simpy.readthedocs.io/) — Simulación de procesos (v4)
+- [NumPy](https://numpy.org/) / [Pandas](https://pandas.pydata.org/) — Computación estadística
+
 ## Recursos de Referencia para Agentes
 *Consultar siempre para alineación con estándares de desarrollo con agentes:*
 - [Agentes MD Specification](https://agents.md/)
