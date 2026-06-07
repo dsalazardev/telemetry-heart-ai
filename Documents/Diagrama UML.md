@@ -1,7 +1,15 @@
 # Diagrama UML Original — Sistema de Triaje Cardiovascular IoT
 
-**Fecha de conversión:** 2026-06-06  
-**Nota:** Convertido desde PDF sin modificaciones. Cualquier discrepancia reportarla.
+**Fecha de conversión:** 2026-06-06
+**Version:** 2.0 — Refactor de dominio
+**Nota:** UML de clases del dominio. No incluye decisiones de infraestructura.
+
+---
+
+**Leyenda de estereotipos:**
+- `<<backend>>` — Entidad persistida en el modulo Backend (API REST + SQL)
+- `<<microservice>>` — Entidad procesada en el Microservicio de IA (LangChain + ML)
+- `<<interface>>` — Contrato compartido entre modulos
 
 ---
 
@@ -9,22 +17,73 @@
 classDiagram
   direction TB
 
-  class Prediccion {
-    -_id: ObjectId
-    -versionModelo: String
-    -probabilidad: Float
-    -clasificacion: String
-    -importancia_variables: JSON
-    -generacionesAg: Int
-    -recallObtenido: Float
-    -cromosomaOptimo: String
-    -tiempoMs: Float
-    -fecha: DateTime
-    -perfil: Perfil
-    +interpretarResultado() String
+  %% ── Estereotipos y leyenda ──
+  class BackendNote {
+    <<Nota>>
+    Las clases <<backend>> se persisten
+    y exponen via API REST
+  }
+  class MicroNote {
+    <<Nota>>
+    Las clases <<microservice>> son
+    internas del pipeline de IA
   }
 
+  %% ── Usuarios ──
+  class Usuario {
+    <<backend>>
+    -_id: ObjectId
+    -documento: String
+    -nombres: String
+    -apellidos: String
+    -telefono: String
+    -activo: Boolean
+  }
+
+  class Paciente {
+    <<backend>>
+    -fechaNacimiento: Date
+    -dispositivos: List~Dispositivo~
+    -perfil: Perfil
+    -evaluaciones: List~Evaluacion~
+    -triajes: List~Triaje~
+    -historiales: List~Historial~
+    +generarAlerta() Alerta
+  }
+
+  class Medico {
+    <<backend>>
+    -especialidad: String
+    -licencia: String
+    -telegramChatId: String
+    -passwordHash: String
+    -triajes: List~Triaje~
+    +atenderAlerta(id ObjectId) void
+    +listarPendientes() List~Triaje~
+  }
+
+  %% ── Perfil y Evaluacion ──
   class Perfil {
+    <<backend>>
+    -_id: ObjectId
+    -edad: Int
+    -sexo: String
+    -tipoSangre: String
+    -alergias: String
+    -paciente: Paciente
+  }
+
+  class Evaluacion {
+    <<microservice>>
+    -_id: ObjectId
+    -fechaEvaluacion: DateTime
+    -origenDatos: String
+    -lectura: Lectura
+    -prediccion: Prediccion
+  }
+
+  class Lectura {
+    <<microservice>>
     -_id: ObjectId
     -cp: Int
     -trestbps: Int
@@ -37,35 +96,25 @@ classDiagram
     -slope: Int
     -ca: Int
     -thal: Int
-    -puntuacionIa: Float
-    -origenDatos: String
-    -timestampEvaluacion: DateTime
-    -paciente: Paciente
-    -predicciones: List~Prediccion~
-    +exportarParaModelo() List~Float~
-    +calcularRiesgo() Float
+    +exportarVector() List~Float~
   }
 
-  class Paciente {
+  class Prediccion {
+    <<microservice>>
     -_id: ObjectId
-    -documento: String
-    -nombres: String
-    -apellidos: String
-    -fechaNacimiento: Date
-    -edad: Int
-    -sexo: String
-    -telefono: String
-    -tipoSangre: String
-    -createdAt: DateTime
-    -perfil: Perfil
-    -dispositivos: List~Dispositivo~
-    -historiales: List~Historial~
-    -triajes: List~Triaje~
-    +registrarIngreso() void
-    +generarAlertas() List
+    -versionModelo: String
+    -probabilidad: Float
+    -clasificacion: String
+    -importanciaVariables: JSON
+    -tiempoMs: Float
+    -fecha: DateTime
+    -metadataTecnica: JSON
+    +interpretarResultado() String
   }
 
+  %% ── Triaje y alertas ──
   class Triaje {
+    <<backend>>
     -_id: ObjectId
     -probabilidadRiesgo: Float
     -nivelUrgencia: String
@@ -83,22 +132,24 @@ classDiagram
     +escalarUrgencia() void
   }
 
-  class Medico {
+  class Alerta {
+    <<backend>>
     -_id: ObjectId
-    -documento: String
-    -nombres: String
-    -apellidos: String
-    -especialidad: String
-    -licencia: String
-    -turno: String
-    -telegramChatId: String
-    -activo: Boolean
-    -triajes: List~Triaje~
-    +atenderAlerta(id ObjectId) void
-    +listarPendientes() List
+    -tipo: String
+    -mensaje: String
+    -leida: Boolean
+    -atendida: Boolean
+    -fechaEmision: DateTime
+    -fechaAtencion: DateTime
+    -paciente: Paciente
+    -medico: Medico
+    -triaje: Triaje
+    +marcarLeida() void
+    +asignarMedico(m Medico) void
   }
 
   class Log {
+    <<backend>>
     -_id: ObjectId
     -timestamp: DateTime
     -tipoEvento: String
@@ -109,7 +160,9 @@ classDiagram
     +registrar() void
   }
 
+  %% ── Clinico ──
   class Patologia {
+    <<backend>>
     -_id: ObjectId
     -codigoCie11: String
     -nombre: String
@@ -121,6 +174,7 @@ classDiagram
   }
 
   class Historial {
+    <<backend>>
     -_id: ObjectId
     -fechaDiagnostico: Date
     -nivelSeveridad: String
@@ -133,7 +187,9 @@ classDiagram
     +actualizarTratamiento() void
   }
 
+  %% ── Telemetria ──
   class Dispositivo {
+    <<backend>>
     -_id: ObjectId
     -tipo: String
     -modelo: String
@@ -148,6 +204,7 @@ classDiagram
   }
 
   class Telemetria {
+    <<backend>>
     -_id: ObjectId
     -frecuenciaCardiaca: Float
     -anomaliaEcg: String
@@ -155,18 +212,32 @@ classDiagram
     -timestamp: DateTime
     -estadoProcesamiento: String
     -dispositivo: Dispositivo
-    -workflow: Workflow
+    -evento: Evento
     +validar() Boolean
     +enriquecerConLab() void
   }
 
+  class Evento {
+    <<backend>>
+    -_id: ObjectId
+    -tipo: String
+    -ventanaInicio: DateTime
+    -ventanaFin: DateTime
+    -lecturas: Int
+    -valorAgregado: JSON
+    -workflow: Workflow
+    +evaluarUmbrales() Boolean
+  }
+
+  %% ── Workflow ──
   class Workflow {
     <<interface>>
     +ejecutarFlujo(triggerTipo String, payload JSON) JSON
-    +notificarUrgencia(medico Medico, mensaje String) Boolean
+    +notificarUrgencia(medicoChatId String, mensaje String) Boolean
   }
 
   class Adapter {
+    <<microservice>>
     -_id: ObjectId
     -proveedor: String
     -endpoint: String
@@ -176,18 +247,55 @@ classDiagram
     +notificarUrgencia(medico Medico, mensaje String) Boolean
   }
 
-  %% ── Relaciones (exactamente como aparecen en el PDF) ──
+  class Documento {
+    <<microservice>>
+    -_id: ObjectId
+    -titulo: String
+    -contenido: String
+    -embedding: List~Float~
+    -fuente: String
+    -fechaIndexacion: DateTime
+    -activo: Boolean
+    +buscarSimilares(query String) List~Documento~
+  }
 
-  Perfil "1" --> "*" Prediccion : predicciones
+  %% ── Relaciones ──
+
+  %% Herencia
+  Usuario <|-- Paciente
+  Usuario <|-- Medico
+  Adapter ..|> Workflow
+
+  %% Paciente
   Paciente "1" --> "1" Perfil : perfil
+  Paciente "1" --> "*" Evaluacion : evaluaciones
   Paciente "1" --> "*" Triaje : triajes
   Paciente "1" --> "*" Dispositivo : dispositivos
   Paciente "1" --> "*" Historial : historiales
+  Paciente "1" --> "*" Alerta : alertas
+
+  %% Evaluacion, Lectura y Prediccion
+  Evaluacion "1" --> "1" Lectura : lectura
+  Evaluacion "1" --> "1" Prediccion : prediccion
+
+  %% Medico
   Medico "1" --> "*" Triaje : triajes
+  Medico "1" --> "*" Alerta : alertas
+
+  %% Alerta
+  Alerta "0..1" --> "1" Triaje : triaje
+
+  %% Triaje
   Triaje "1" --> "*" Log : logs
-  Patologia "1" --> "*" Historial : historiales
-  Dispositivo "1" --> "*" Telemetria : telemetrias
-  Telemetria "1" --> "1" Workflow : workflow
   Triaje "1" --> "1" Workflow : workflow
-  Adapter ..|> Workflow
+
+  %% Patologia
+  Patologia "1" --> "*" Historial : historiales
+
+  %% Dispositivo y Telemetria
+  Dispositivo "1" --> "*" Telemetria : telemetrias
+
+  %% Telemetria y Evento
+  Telemetria "1" --> "*" Evento : genera
+  Evento "1" --> "1" Workflow : procesa
 ```
