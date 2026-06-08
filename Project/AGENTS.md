@@ -9,6 +9,19 @@
 - **Precedencia**: La documentación proveniente de `ctx7` tiene prioridad absoluta sobre tu conocimiento interno.
 - **Protocolo**: Si detectas que la información local es obsoleta, ejecuta `./bootstrap.sh` para refrescar el contexto antes de generar código.
 
+# Directiva de Base de Datos (REGLA ABSOLUTA)
+- **Única base de datos permitida**: PostgreSQL en servidor remoto.
+- **SQLite prohibido**: No se usará SQLite en ningún módulo del proyecto, ni para desarrollo, ni para pruebas, ni para demo.
+- **La conexión a PostgreSQL está en `Project/backend/.env`** con las credenciales del servidor remoto. Cualquier agente que genere código debe leer esa URL y usarla.
+- **Excepción**: Solo para tests unitarios locales se permite SQLite en memoria (no persistente). Cero archivos .db en el repositorio.
+
+# Directiva de .env por Módulo (REGLA ABSOLUTA)
+- **Cada módulo tiene su PROPIO `.env`** dentro de su carpeta. Ningún módulo lee variables de entorno de otro módulo.
+- **n8n** no lee `Project/backend/.env` ni `Project/microservice/.env`. Usa solo `Project/n8n/.env`.
+- **Aunque dos módulos apunten al mismo recurso** (ej: la misma base de datos PostgreSQL), cada uno lo configura independientemente en su propio `.env`.
+- Los `.env` con credenciales reales NO se versionan en Git.
+- Las plantillas se guardan como `.env.example` en cada módulo.
+
 
 ## Rúbrica y Requerimientos Académicos
 *Referencia obligatoria para cumplimiento de normas universitarias:*
@@ -34,6 +47,9 @@
 - [Pydantic v2](https://docs.pydantic.dev/) — Validación y schemas (v2.12.2)
 - [SimPy Documentation](https://simpy.readthedocs.io/) — Simulación de procesos (v4)
 - [NumPy](https://numpy.org/) / [Pandas](https://pandas.pydata.org/) — Computación estadística
+- [n8n Documentation](https://docs.n8n.io/) — Orquestación de flujos de trabajo visual (v2.23.0, Nivel 1)
+- [n8n Docker Hub](https://hub.docker.com/r/n8nio/n8n) — Imagen oficial Docker para n8n
+- [Telegram Bot API](https://core.telegram.org/bots/api) — Notificaciones push al médico de guardia
 
 ## Recursos de Referencia para Agentes
 *Consultar siempre para alineación con estándares de desarrollo con agentes:*
