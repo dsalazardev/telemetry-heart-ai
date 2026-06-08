@@ -35,14 +35,14 @@ class AgentService:
         tools = _make_tools(risk_engine, rag)
 
         @wrap_tool_call
-        def audit_middleware(request, handler):
+        async def audit_middleware(request, handler):
             step = {
                 "tool": str(getattr(request, "name", "unknown")),
                 "args": str(getattr(request, "args", {})),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             logger.info("Tool call: %s", step["tool"])
-            result = handler(request)
+            result = await handler(request)
             step["result_summary"] = str(result)[:200]
             self.audit_trail.append(step)
             return result
