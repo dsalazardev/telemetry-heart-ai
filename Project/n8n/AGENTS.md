@@ -4,10 +4,10 @@
 
 | Componente | Tecnología | Versión | Propósito |
 |-----------|-----------|---------|-----------|
-| Plataforma de automatización | n8n | 2.23.0 | Orquestación visual de flujos de trabajo |
+| Plataforma de automatización | n8n | latest (ctx7-verified) | Orquestación visual de flujos de trabajo |
 | Despliegue | Docker Compose | latest | Contenedor de n8n con .env propio |
 | Runtime | Node.js | v22.x LTS | Ejecución de nodos n8n |
-| Base de datos | PostgreSQL | remota (Supabase) | **Misma BD del backend** — acceso directo |
+| Base de datos | PostgreSQL | remota (Aiven Cloud) | **Misma BD del backend** — acceso directo |
 | LLM | OpenAI / Claude API | latest | Interpreta preguntas del médico y genera SQL |
 | Notificaciones | Telegram Bot API | latest | Bot que habla con médicos registrados |
 | Imagen Docker | n8nio/n8n | docker.n8n.io/n8nio/n8n | Oficial estable |
@@ -197,10 +197,17 @@ responde: "ERROR: No puedo responder eso con los datos disponibles."
 | `DB_POSTGRESDB_DATABASE` | Nombre BD |
 | `DB_POSTGRESDB_USER` | Usuario BD |
 | `DB_POSTGRESDB_PASSWORD` | Contraseña BD |
+| `DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED` | `false` — requerido para conexión SSL con Aiven Cloud |
 | `N8N_PORT` | Puerto del servidor n8n |
 | `N8N_PROTOCOL` | Protocolo (http/https) |
 | `N8N_HOST` | Host del servidor n8n |
 | `N8N_ENCRYPTION_KEY` | Clave para cifrar credenciales almacenadas en la BD de n8n (Telegram token, LLM API key). Generar con: `openssl rand -hex 32` |
+| `N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS` | `true` — mejora de seguridad para archivos de configuración |
+| `N8N_RUNNERS_ENABLED` | `true` — requerido para versiones recientes de n8n |
+| `N8N_LOG_LEVEL` | `info` — nivel de logging (debug, info, warn, error) |
+| `N8N_LOG_OUTPUT` | `console` — destino del log (console, file) |
+| `GENERIC_TIMEZONE` | `America/Bogota` — zona horaria para schedulers |
+| `TZ` | `America/Bogota` — zona horaria del contenedor Docker |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram |
 | `LLM_BASE_URL` | URL de la API del LLM (ej: `https://api.openai.com/v1`) |
 | `LLM_API_KEY` | API Key del LLM |
@@ -212,10 +219,11 @@ responde: "ERROR: No puedo responder eso con los datos disponibles."
 ## Instalación con Docker Compose
 
 ```yaml
-version: "3.8"
+name: tha-n8n
 services:
   n8n:
-    image: docker.n8n.io/n8nio/n8n
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
     ports:
       - "${N8N_PORT}:5678"
     environment:
@@ -225,17 +233,27 @@ services:
       - DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
       - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
       - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+      - DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED=${DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED}
       - N8N_PROTOCOL=${N8N_PROTOCOL}
       - N8N_HOST=${N8N_HOST}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=${N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS}
+      - N8N_RUNNERS_ENABLED=${N8N_RUNNERS_ENABLED}
+      - N8N_LOG_LEVEL=${N8N_LOG_LEVEL}
+      - N8N_LOG_OUTPUT=${N8N_LOG_OUTPUT}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - TZ=${TZ}
     env_file:
       - .env
     volumes:
       - n8n_data:/home/node/.n8n
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:
   n8n_data:
+    name: n8n_data
 ```
 
 Sin PostgreSQL aparte. n8n se conecta directo al remoto.
@@ -265,6 +283,7 @@ Sin PostgreSQL aparte. n8n se conecta directo al remoto.
 | 6 | Misma PostgreSQL del backend | Sin BD separada. n8n se conecta directo al PostgreSQL remoto |
 | 7 | Cada acción genera INSERT INTO logs | Trazabilidad completa de todas las operaciones de n8n |
 | 8 | Docker Compose sin PostgreSQL | n8n se conecta al remoto. No necesita postgres contenedorizado |
+| 9 | Nodo HTTP Request para LLM (no nodo nativo OpenAI) | Aunque n8n tiene nodo nativo `n8n-nodes-base.openAi`, HTTP Request permite: (1) cambiar entre OpenAI y Claude sin rehacer el workflow, (2) control total del body JSON (system + user messages), (3) parsear directamente `choices[0].message.content`, (4) implementar el patrón de dos llamadas al LLM con prompts diferentes. El nodo nativo abstrae demasiado y no permite el prompt engineering detallado que requiere la REGLA DE ORO. |
 
 ## Convenciones
 
@@ -358,3 +377,53 @@ Webhook POST externo en `/webhook/telemetria`.
 | `n8n_webhook_ok` | Telemetría almacenada | "Telemetría paciente 1: FC=120, SpO2=88" |
 | `n8n_micro_ok` | Microservicio responde | "Evaluación enviada al microservicio para paciente 1" |
 | `n8n_micro_error` | Microservicio falla | "Error al contactar microservicio para paciente 1: timeout" |
+
+## Estado Actual y Límites Conocidos
+
+### ✅ Completado
+- **Infraestructura**: Contenedor n8n `2.23.4` corriendo con PostgreSQL Aiven Cloud
+- **Credenciales**: 3 credenciales configuradas (Telegram Bot, PostgreSQL Aiven, OpenCode Go LLM)
+- **Workflows**: 3 workflows creados con estructura completa vía API REST:
+  - `THA - Asistente LLM` — 18 nodos (Telegram Trigger → Identificar → IF → Prompt → LLM → SQL → Formatear → Responder)
+  - `THA - Schedule Pendientes` — 8 nodos (Schedule → PostgreSQL → IF → Alerta → Telegram → UPDATE → Logs)
+  - `THA - Webhook Telemetria` — 9 nodos (Webhook → INSERT → Log → HTTP Request → IF → Logs → Responder)
+- **Conexiones**: Todas las ramas IF, loops de error y nodos de logging conectados
+- **Documentación**: README y AGENTS.md actualizados
+
+### ⚠️ Bloqueado — Requiere Webhook URL Público
+**Los workflows NO pueden activarse en local sin una URL pública** para webhooks.
+
+| Workflow | Trigger | Por qué necesita URL pública |
+|----------|---------|------------------------------|
+| Asistente LLM | Telegram Trigger | Telegram requiere HTTPS para enviar updates al bot |
+| Webhook Telemetria | Webhook POST | El webhook debe ser accesible desde Internet |
+| Schedule Pendientes | Schedule Trigger | No debería necesitar URL, pero n8n 2.23.x parece requerirla si el workflow contiene nodos Telegram |
+
+**Solución para producción:**
+```bash
+# En .env de producción, definir dominio público
+N8N_HOST=api.tu-dominio.com
+N8N_PROTOCOL=https
+WEBHOOK_URL=https://api.tu-dominio.com/
+```
+
+**Solución para desarrollo local:**
+```bash
+# Usar ngrok para exponer localhost
+ngrok http 5678
+# Luego configurar WEBHOOK_URL=https://<ngrok-id>.ngrok.io/ en .env y reiniciar n8n
+```
+
+### 🔄 Próximos Pasos para Activación
+1. Configurar `WEBHOOK_URL` en `.env` con dominio público o ngrok
+2. Reiniciar contenedor: `docker compose restart`
+3. Activar workflows desde UI o API: `PATCH /rest/workflows/{id} {"active":true}`
+4. Registrar webhook de Telegram: BotFather → Set Webhook (n8n hace esto automáticamente al activar)
+
+### 📂 Archivos Versionados
+Los 3 workflows están exportados como JSON en:
+- `Project/n8n/workflows/THA-Asistente-LLM.json`
+- `Project/n8n/workflows/THA-Schedule-Pendientes.json`
+- `Project/n8n/workflows/THA-Webhook-Telemetria.json`
+
+Estos archivos contienen la estructura completa (nodos + conexiones) sin credenciales.

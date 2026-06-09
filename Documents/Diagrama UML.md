@@ -224,7 +224,7 @@ classDiagram
   }
 
   class Adapter {
-    <<microservice>>
+    <<n8n>>
     -_id: ObjectId
     -proveedor: String
     -endpoint: String

@@ -1,0 +1,586 @@
+{
+  "updatedAt": "2026-06-09T01:27:22.769Z",
+  "createdAt": "2026-06-08T23:17:34.833Z",
+  "id": "QfieDIvHPEsXOYyt",
+  "name": "THA - Schedule Pendientes",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        256,
+        304
+      ],
+      "id": "schedule-trigger-01"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT t.id, t.paciente_id, t.probabilidadRiesgo, t.nivelUrgencia, t.fechaEmision, p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.telefono, m.telegramChatId FROM triajes t JOIN pacientes p ON t.paciente_id = p.id JOIN medicos m ON t.medico_id = m.id WHERE t.atendida = false AND t.telegramEnviado = false ORDER BY CASE t.nivelUrgencia WHEN 'Emergencia' THEN 1 WHEN 'Urgente' THEN 2 WHEN 'Alta' THEN 3 WHEN 'Media' THEN 4 ELSE 5 END, t.fechaEmision LIMIT 10",
+        "options": {}
+      },
+      "name": "Triajes Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ],
+      "id": "triajes-pendientes-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-empty",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Hay Pendientes IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        656,
+        304
+      ],
+      "id": "hay-pendientes-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json;\nif (!items || items.length === 0) return [];\n\nlet msg = '\ud83d\udd14 *Triajes Pendientes*\\n\\n';\nitems.forEach((t, i) => {\n  const riesgo = t.probabilidadriesgo !== null ? `${t.probabilidadriesgo}%` : 'N/A';\n  msg += `${i+1}. *${t.paciente_nombre} ${t.paciente_apellido}*\\n`;\n  msg += `   Riesgo: ${riesgo} | Urgencia: ${t.nivelurgencia}\\n\\n`;\n});\nmsg += `Total: ${items.length} triaje(s) pendiente(s).`;\n\nreturn [{\n  json: {\n    message: msg,\n    chatId: items[0].telegramchatid,\n    triajeIds: items.map(t => t.id)\n  }\n}];"
+      },
+      "name": "Armar Alerta",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        864,
+        304
+      ],
+      "id": "armar-alerta-01"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Notificar Medico",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        288
+      ],
+      "id": "notificar-medico-01",
+      "webhookId": "623ee1e2-6d1e-4cc9-8bdd-369d8d96bd3c",
+      "credentials": {
+        "telegramApi": {
+          "id": "1icwOfNh2Z2l2e47",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ 'UPDATE triajes SET telegramEnviado = true WHERE id IN (' + $json.triajeIds.join(',') + ')' }}",
+        "options": {}
+      },
+      "name": "UPDATE telegramEnviado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        304
+      ],
+      "id": "update-flag-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES ({{ $json.triajeIds[0] }}, 'n8n_schedule_ok', 'Triaje notificado por schedule', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        304
+      ],
+      "id": "log-schedule-ok-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_schedule_empty', '0 triajes pendientes', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Empty",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        864,
+        512
+      ],
+      "id": "log-schedule-empty-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Triajes Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Triajes Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Hay Pendientes IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Pendientes IF": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Empty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Armar Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar Alerta": {
+      "main": [
+        [
+          {
+            "node": "Notificar Medico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Medico": {
+      "main": [
+        [
+          {
+            "node": "UPDATE telegramEnviado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE telegramEnviado": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "3a513780-fe42-44f8-8906-9ebe75aa1458",
+  "activeVersionId": "3a513780-fe42-44f8-8906-9ebe75aa1458",
+  "versionCounter": 3,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-06-08T23:17:34.833Z",
+      "createdAt": "2026-06-08T23:17:34.833Z",
+      "role": "workflow:owner",
+      "workflowId": "QfieDIvHPEsXOYyt",
+      "projectId": "OhBbW0QDR3wMOvsM",
+      "project": {
+        "updatedAt": "2026-06-08T22:51:58.177Z",
+        "createdAt": "2026-06-08T22:34:49.435Z",
+        "id": "OhBbW0QDR3wMOvsM",
+        "name": "Admin User <admin@telemetry-heart-ai.localj>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      }
+    }
+  ],
+  "tags": [],
+  "parentFolder": null,
+  "activeVersion": {
+    "updatedAt": "2026-06-09T01:27:23.261Z",
+    "createdAt": "2026-06-09T01:27:23.261Z",
+    "versionId": "3a513780-fe42-44f8-8906-9ebe75aa1458",
+    "workflowId": "QfieDIvHPEsXOYyt",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes"
+              }
+            ]
+          }
+        },
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1,
+        "position": [
+          256,
+          304
+        ],
+        "id": "schedule-trigger-01"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT t.id, t.paciente_id, t.probabilidadRiesgo, t.nivelUrgencia, t.fechaEmision, p.nombre as paciente_nombre, p.apellido as paciente_apellido, p.telefono, m.telegramChatId FROM triajes t JOIN pacientes p ON t.paciente_id = p.id JOIN medicos m ON t.medico_id = m.id WHERE t.atendida = false AND t.telegramEnviado = false ORDER BY CASE t.nivelUrgencia WHEN 'Emergencia' THEN 1 WHEN 'Urgente' THEN 2 WHEN 'Alta' THEN 3 WHEN 'Media' THEN 4 ELSE 5 END, t.fechaEmision LIMIT 10",
+          "options": {}
+        },
+        "name": "Triajes Pendientes",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          464,
+          304
+        ],
+        "id": "triajes-pendientes-01",
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 1
+            },
+            "conditions": [
+              {
+                "id": "cond-empty",
+                "leftValue": "={{ $json.length }}",
+                "rightValue": 0,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "name": "Hay Pendientes IF",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          656,
+          304
+        ],
+        "id": "hay-pendientes-01"
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $json;\nif (!items || items.length === 0) return [];\n\nlet msg = '\ud83d\udd14 *Triajes Pendientes*\\n\\n';\nitems.forEach((t, i) => {\n  const riesgo = t.probabilidadriesgo !== null ? `${t.probabilidadriesgo}%` : 'N/A';\n  msg += `${i+1}. *${t.paciente_nombre} ${t.paciente_apellido}*\\n`;\n  msg += `   Riesgo: ${riesgo} | Urgencia: ${t.nivelurgencia}\\n\\n`;\n});\nmsg += `Total: ${items.length} triaje(s) pendiente(s).`;\n\nreturn [{\n  json: {\n    message: msg,\n    chatId: items[0].telegramchatid,\n    triajeIds: items.map(t => t.id)\n  }\n}];"
+        },
+        "name": "Armar Alerta",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          864,
+          304
+        ],
+        "id": "armar-alerta-01"
+      },
+      {
+        "parameters": {
+          "chatId": "={{ $json.chatId }}",
+          "text": "={{ $json.message }}",
+          "additionalFields": {
+            "parse_mode": "Markdown"
+          }
+        },
+        "name": "Notificar Medico",
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1,
+        "position": [
+          1056,
+          288
+        ],
+        "id": "notificar-medico-01",
+        "webhookId": "623ee1e2-6d1e-4cc9-8bdd-369d8d96bd3c",
+        "credentials": {
+          "telegramApi": {
+            "id": "1icwOfNh2Z2l2e47",
+            "name": "Telegram Bot API"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "{{ 'UPDATE triajes SET telegramEnviado = true WHERE id IN (' + $json.triajeIds.join(',') + ')' }}",
+          "options": {}
+        },
+        "name": "UPDATE telegramEnviado",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          1264,
+          304
+        ],
+        "id": "update-flag-01",
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES ({{ $json.triajeIds[0] }}, 'n8n_schedule_ok', 'Triaje notificado por schedule', true, NOW())",
+          "options": {}
+        },
+        "name": "INSERT Log OK",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          1456,
+          304
+        ],
+        "id": "log-schedule-ok-01",
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_schedule_empty', '0 triajes pendientes', true, NOW())",
+          "options": {}
+        },
+        "name": "INSERT Log Empty",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          864,
+          512
+        ],
+        "id": "log-schedule-empty-01",
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Triajes Pendientes",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Triajes Pendientes": {
+        "main": [
+          [
+            {
+              "node": "Hay Pendientes IF",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Hay Pendientes IF": {
+        "main": [
+          [
+            {
+              "node": "INSERT Log Empty",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Armar Alerta",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar Alerta": {
+        "main": [
+          [
+            {
+              "node": "Notificar Medico",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Notificar Medico": {
+        "main": [
+          [
+            {
+              "node": "UPDATE telegramEnviado",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "UPDATE telegramEnviado": {
+        "main": [
+          [
+            {
+              "node": "INSERT Log OK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Admin User",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-06-09T01:29:03.120Z",
+        "id": 8,
+        "workflowId": "QfieDIvHPEsXOYyt",
+        "versionId": "3a513780-fe42-44f8-8906-9ebe75aa1458",
+        "event": "activated",
+        "userId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      }
+    ]
+  },
+  "scopes": [
+    "execution:reveal",
+    "workflow:create",
+    "workflow:delete",
+    "workflow:disableRedaction",
+    "workflow:enableRedaction",
+    "workflow:execute",
+    "workflow:execute-chat",
+    "workflow:export",
+    "workflow:list",
+    "workflow:move",
+    "workflow:publish",
+    "workflow:read",
+    "workflow:share",
+    "workflow:unpublish",
+    "workflow:unshare",
+    "workflow:update"
+  ],
+  "checksum": "a8f4964f99429537548963f45ba9ee2ae7022c49bdd9885c2fdc45d866a2e142"
+}
