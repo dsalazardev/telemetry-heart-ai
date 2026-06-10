@@ -10,6 +10,14 @@ class EvidenceSource(BaseModel):
 
 
 class ClinicalExplanation(BaseModel):
+    """Estructura de salida del agente LangChain.
+    Mapeo al modelo Triaje del backend:
+      - risk_level          -> Triaje.nivelUrgencia  ("bajo"|"medio"|"alto")
+      - risk_score          -> Triaje.probabilidadRiesgo
+      - dominant_factors    -> Triaje.factoresCriticos (serializado como JSON string)
+      - explanation         -> Triaje.explicacionClinica
+      - recommended_action  -> se usa en backend para generar alerta
+    """
     risk_level: Literal["bajo", "medio", "alto"]
     risk_score: float
     dominant_factors: list[str]

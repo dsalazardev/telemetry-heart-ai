@@ -1,0 +1,86 @@
+risk_thresholds:
+  medium: 0.40
+  high: 0.70
+
+dominant_factor:
+  weight_threshold: 0.15
+  value_gate: 0.3
+
+n8n_thresholds:
+  tachycardia: 130
+  bradycardia: 45
+  spo2_critical: 92
+  systolic_critical: 160
+  diastolic_critical: 100
+  cholesterol_critical: 240
+  glucose_critical: 180
+
+features:
+  - name: heart_rate
+    min: 30
+    max: 220
+    invert: false
+    factor_label: "frecuencia cardiaca elevada"
+  - name: spo2
+    min: 60
+    max: 100
+    invert: true
+    factor_label: "saturación baja"
+  - name: systolic_bp
+    min: 60
+    max: 260
+    invert: false
+    factor_label: "presión sistólica elevada"
+  - name: diastolic_bp
+    min: 30
+    max: 160
+    invert: false
+    factor_label: "presión diastólica elevada"
+  - name: cholesterol
+    min: 100
+    max: 400
+    invert: false
+    factor_label: "colesterol elevado"
+  - name: glucose
+    min: 50
+    max: 350
+    invert: false
+    factor_label: "glucosa elevada"
+  - name: age
+    min: 0
+    max: 120
+    invert: false
+    factor_label: "edad avanzada"
+  - name: chest_pain_type
+    min: 0
+    max: 4
+    invert: false
+    factor_label: "dolor torácico asintomático"
+  - name: sex
+    min: 0
+    max: 1
+    invert: false
+    factor_label: "sexo masculino"
+  - name: smoker
+    min: 0
+    max: 1
+    invert: false
+    factor_label: "tabaquismo"
+  - name: previous_condition
+    min: 0
+    max: 1
+    invert: false
+    factor_label: "condición previa"
+
+chest_pain_types:
+  typical_angina: 1.0
+  atypical_angina: 2.0
+  non_anginal: 3.0
+  asymptomatic: 4.0
+
+fallback:
+  critical_flags: 3
+  high_flags: 1
+  critical_score: 0.85
+  high_score: 0.62
+  low_score: 0.25

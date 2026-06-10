@@ -32,9 +32,16 @@ async def metrics_evaluation(request: Request):
 @router.post("/rag/reindex")
 async def rag_reindex(request: Request):
     services = request.app.state.services
+    prev_state = services.rag.initialized
+    services.rag.initialized = False
     try:
         services.rag.initialize()
-        return {"status": "indexed", "documents": 3, "chunks": 0}
+        return {
+            "status": "indexed",
+            "documents": services.rag.doc_count,
+            "chunks": services.rag.chunk_count,
+        }
     except Exception as e:
         logger.error("Error reindexando: %s", e)
+        services.rag.initialized = prev_state
         return {"status": "error", "message": str(e)}
