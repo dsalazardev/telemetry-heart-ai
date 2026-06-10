@@ -34,7 +34,7 @@
 - [Contexto Clínico y de Negocio](./docs/CONTEXTO_CLINICO.md)
 - [`/frontend`](./frontend/AGENTS.md) — Capa de presentación y dashboard médico.
 - [`/backend`](./backend/AGENTS.md) — API central y persistencia relacional.
-- [`/microservice`](./microservice/AGENTS.md) — Capa aislada de Inteligencia Artificial y modelo predictivo.
+- [`/microservice`](./microservice/AGENTS.md) — FastAPI + LangChain + Metaheurísticas. Predicción de riesgo cardiovascular (RandomForest), agente conversacional (RAG), y optimización (DEAP AG + PSO manual).
 - [`/n8n`](./n8n/AGENTS.md) — Motor de orquestación de flujos de trabajo.
 - [`/wearos`](./wearos/AGENTS.md) — Adquisición de telemetría IoT.
 
@@ -42,6 +42,8 @@
 - [Diagrama UML del Sistema](../Documents/Diagrama%20UML.md) — Vista general de la arquitectura, componentes y relaciones del sistema. **Consulta obligatoria antes de cualquier modificación estructural.**
 
 ## Stack Tecnológico Definido
+
+### Backend Stack
 - [FastAPI Documentation](https://fastapi.tiangolo.com/) — Framework web del backend (v0.136.3)
 - [SQLModel Documentation](https://sqlmodel.tiangolo.com/) — ORM para modelos de datos (v0.0.37)
 - [Pydantic v2](https://docs.pydantic.dev/) — Validación y schemas (v2.12.2)
@@ -50,6 +52,13 @@
 - [n8n Documentation](https://docs.n8n.io/) — Orquestación de flujos de trabajo visual (v2.23.0, Nivel 1)
 - [n8n Docker Hub](https://hub.docker.com/r/n8nio/n8n) — Imagen oficial Docker para n8n
 - [Telegram Bot API](https://core.telegram.org/bots/api) — Notificaciones push al médico de guardia
+
+### Microservice Stack
+- [LangChain Python](https://python.langchain.com/) — Agent framework (v0.3.0+, `create_agent()` + `InMemorySaver`)
+- [ChromaDB](https://docs.trychroma.com/) — Vector store para RAG (`PersistentClient`)
+- [DEAP](https://deap.readthedocs.io/) — Metaheurísticas (AG + PSO manual con `Particle` class)
+- [sentence-transformers](https://www.sbert.net/) — Embeddings (`all-MiniLM-L6-v2`, 384d)
+- [scikit-learn](https://scikit-learn.org/) — Clasificador (`RandomForestClassifier`)
 
 ## Recursos de Referencia para Agentes
 *Consultar siempre para alineación con estándares de desarrollo con agentes:*
