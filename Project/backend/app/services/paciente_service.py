@@ -53,8 +53,24 @@ async def actualizar_paciente(db: AsyncSession, paciente_id: int, data: Paciente
     paciente = await obtener_paciente(db, paciente_id)
     if not paciente:
         return None
+    
+    # Actualizar fecha de nacimiento si viene en la data
     if data.fechaNacimiento is not None:
         paciente.fechaNacimiento = data.fechaNacimiento
+    
+    # Actualizar campos del usuario asociado
+    if data.usuario is not None:
+        if data.usuario.nombres is not None:
+            paciente.usuario.nombres = data.usuario.nombres
+        if data.usuario.apellidos is not None:
+            paciente.usuario.apellidos = data.usuario.apellidos
+        if data.usuario.correo is not None:
+            paciente.usuario.correo = data.usuario.correo
+        if data.usuario.telefono is not None:
+            paciente.usuario.telefono = data.usuario.telefono
+        if data.usuario.activo is not None:
+            paciente.usuario.activo = data.usuario.activo
+
     await db.commit()
     await db.refresh(paciente)
     return paciente
