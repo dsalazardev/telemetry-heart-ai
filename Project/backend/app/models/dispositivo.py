@@ -19,7 +19,7 @@ class Dispositivo(SQLModel, table=True):
     paciente_id: int = Field(foreign_key="pacientes.id")
 
     paciente: Optional[Paciente] = Relationship()
-    telemetrias: List["Telemetria"] = Relationship()
+    telemetrias: List["Telemetria"] = Relationship(back_populates="dispositivo")
 
 
 class Telemetria(SQLModel, table=True):
@@ -33,8 +33,8 @@ class Telemetria(SQLModel, table=True):
     dispositivo_id: int = Field(foreign_key="dispositivos.id")
     evento_id: Optional[int] = Field(default=None, foreign_key="eventos.id")
 
-    dispositivo: Optional[Dispositivo] = Relationship()
-    evento: Optional["Evento"] = Relationship()
+    dispositivo: Optional[Dispositivo] = Relationship(back_populates="telemetrias")
+    evento: Optional["Evento"] = Relationship(back_populates="telemetrias")
 
 
 class Evento(SQLModel, table=True):
@@ -47,4 +47,4 @@ class Evento(SQLModel, table=True):
     valorAgregado: Optional[dict] = Field(default=None, sa_type=JSON)
     workflow_id: Optional[int] = None
 
-    telemetrias: List[Telemetria] = Relationship()
+    telemetrias: List[Telemetria] = Relationship(back_populates="evento")

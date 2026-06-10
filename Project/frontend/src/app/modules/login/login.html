@@ -1,0 +1,50 @@
+<div class="login-page">
+  <div class="glass-card login-card fade-in">
+    <div class="brand">
+      <div class="logo-icon">❤️</div>
+      <h1>Telemetry Heart AI</h1>
+      <p>Dashboard Médico de Triage Cardiovascular</p>
+    </div>
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+      <div class="form-group">
+        <label for="correo">Correo Institucional</label>
+        <div class="input-wrapper">
+          <input 
+            id="correo"
+            [(ngModel)]="usuario.correo" 
+            name="correo" 
+            type="email"
+            placeholder="medico@hospital.com" 
+            required
+            #correo="ngModel"
+          >
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <div class="input-wrapper">
+          <input 
+            id="password"
+            [(ngModel)]="usuario.password" 
+            name="password" 
+            type="password" 
+            placeholder="••••••••" 
+            required
+            #password="ngModel"
+          >
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" [disabled]="!loginForm.valid">
+        <span>Ingresar al Sistema</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+
+      <div class="login-footer">
+        <p>© 2026 Universidad de Caldas - Facultad de Medicina</p>
+      </div>
+    </form>
+  </div>
+</div>

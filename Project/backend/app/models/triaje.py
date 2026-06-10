@@ -29,9 +29,9 @@ class Triaje(SQLModel, table=True):
     paciente: Optional[Paciente] = Relationship()
     medico: Optional[Medico] = Relationship()
     alerta: Optional["Alerta"] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": lambda: Triaje.alerta_id}
+        sa_relationship_kwargs={"foreign_keys": lambda: Triaje.alerta_id, "overlaps": "triajes"}
     )
-    logs: List["Log"] = Relationship()
+    logs: List["Log"] = Relationship(back_populates="triaje")
 
 
 class Alerta(SQLModel, table=True):
@@ -50,7 +50,7 @@ class Alerta(SQLModel, table=True):
     paciente: Optional[Paciente] = Relationship()
     medico: Optional[Medico] = Relationship()
     triaje: Optional[Triaje] = Relationship(
-        sa_relationship_kwargs={"foreign_keys": lambda: Alerta.triaje_id}
+        sa_relationship_kwargs={"foreign_keys": lambda: Alerta.triaje_id, "overlaps": "alertas"}
     )
 
 
@@ -64,4 +64,4 @@ class Log(SQLModel, table=True):
     errorMsg: Optional[str] = None
     triaje_id: int = Field(foreign_key="triajes.id")
 
-    triaje: Optional[Triaje] = Relationship()
+    triaje: Optional[Triaje] = Relationship(back_populates="logs")

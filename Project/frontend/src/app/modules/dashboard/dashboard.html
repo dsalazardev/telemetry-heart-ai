@@ -1,0 +1,93 @@
+<div class="app-container">
+  <app-sidebar></app-sidebar>
+
+  <main class="main-content">
+    <header class="topbar">
+      <div class="view-info">
+        <h1>Panel de Control</h1>
+        <p>Monitoreo cardiovascular en tiempo real</p>
+      </div>
+      <div class="user-profile">
+        <div class="user-info">
+          <span class="name">Dr. Juan Pérez</span>
+          <span class="role">Cardiólogo de Turno</span>
+        </div>
+        <div class="avatar">JP</div>
+      </div>
+    </header>
+
+    <div class="content-body fade-in">
+      <!-- Resumen Cards -->
+      <section class="stats-grid">
+        <div class="glass-card stat-card primary">
+          <div class="stat-icon">👥</div>
+          <div class="stat-data">
+            <span class="label">Pacientes Monitoreados</span>
+            <span class="value">{{ resumen.pacientesTotales }}</span>
+          </div>
+        </div>
+
+        <div class="glass-card stat-card danger">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-data">
+            <span class="label">Alertas Críticas</span>
+            <span class="value">{{ resumen.alertasCriticas }}</span>
+          </div>
+        </div>
+
+        <div class="glass-card stat-card warning">
+          <div class="stat-icon">📋</div>
+          <div class="stat-data">
+            <span class="label">Triajes Pendientes</span>
+            <span class="value">{{ resumen.triajesPendientes }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Section -->
+      <div class="dashboard-grid">
+        <!-- Feed de Alertas -->
+        <section class="glass-card alert-feed">
+          <div class="section-header">
+            <h3>Alertas de Triage Recientes</h3>
+            <button class="btn btn-sm">Ver todas</button>
+          </div>
+
+          <div class="alert-list" *ngIf="!loading; else loader">
+            <div *ngFor="let alerta of alertas" class="alert-item" [ngClass]="alerta.tipo.toLowerCase()">
+              <div class="alert-status"></div>
+              <div class="alert-content">
+                <div class="alert-header">
+                  <span class="paciente-name">{{ alerta.paciente }}</span>
+                  <span class="alert-time">{{ alerta.fecha | date:'HH:mm' }}</span>
+                </div>
+                <p class="alert-msg">{{ alerta.mensaje }}</p>
+              </div>
+              <button class="btn-icon">👁️</button>
+            </div>
+            
+            <div *ngIf="alertas.length === 0" class="empty-state">
+              <p>No hay alertas críticas en este momento.</p>
+            </div>
+          </div>
+          
+          <ng-template #loader>
+            <div class="loader-container">Cargando alertas...</div>
+          </ng-template>
+        </section>
+
+        <!-- Gráfico o Mapa de Riesgo -->
+        <section class="glass-card risk-map">
+          <div class="section-header">
+            <h3>Estado de Riesgo por Paciente</h3>
+          </div>
+          <div class="placeholder-chart">
+            <div class="chart-content">
+              [Espacio para Visualización de Telemetría Dinámica]
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>

@@ -1,0 +1,230 @@
+/* Patient list specific styles - shared layout now in styles.scss */
+
+/* Toast Notification */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 2000;
+  animation: fadeIn 0.3s ease;
+  font-weight: 500;
+  font-size: 0.9375rem;
+
+  &.success {
+    background: var(--success);
+    color: white;
+  }
+
+  &.error {
+    background: var(--danger);
+    color: white;
+  }
+}
+
+
+.table-container {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-header {
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  gap: 1.5rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.search-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--bg-main);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  gap: 0.75rem;
+
+  input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.9rem;
+    &:focus { outline: none; }
+  }
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+
+  thead {
+    background: hsla(var(--primary-hue), 20%, 98%, 0.5);
+    th {
+      padding: 1rem 2rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+
+  tbody {
+    tr {
+      transition: background 0.2s ease;
+      &:hover { background: hsla(var(--primary-hue), 90%, 55%, 0.02); }
+      
+      td {
+        padding: 1.25rem 2rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.9375rem;
+      }
+    }
+  }
+}
+
+.patient-cell {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  .avatar-sm {
+    width: 36px;
+    height: 36px;
+    background: var(--primary-low);
+    color: var(--primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .name { font-weight: 600; }
+}
+
+.risk-badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+
+  &.alto { background: var(--danger-low); color: var(--danger); }
+  &.medio { background: var(--warning-low); color: var(--warning); }
+  &.bajo { background: var(--success-low); color: var(--success); }
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  &.active { background: var(--success); box-shadow: 0 0 8px var(--success); }
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-outline {
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  
+  &.active {
+    background: var(--primary-low);
+    border-color: var(--primary-mid);
+    color: var(--primary);
+  }
+}
+
+.table-loader {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--primary-hue), 10%, 10%, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: white;
+  padding: 0;
+}
+
+.modal-header {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  h2 { font-size: 1.25rem; margin: 0; }
+  .close-btn { 
+    background: none; border: none; font-size: 2rem; color: var(--text-muted); cursor: pointer; 
+    &:hover { color: var(--danger); }
+  }
+}
+
+.modal-form {
+  padding: 2rem;
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.5rem;
+    label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; }
+    input { 
+      width: 100%; padding: 0.75rem 1rem; border-radius: var(--radius-md); 
+      border: 1px solid var(--border); font-family: inherit;
+      &:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-low); }
+    }
+  }
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+}
