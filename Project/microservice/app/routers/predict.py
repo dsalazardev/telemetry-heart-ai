@@ -5,7 +5,7 @@ from app.services.predictor_service import PredictorService
 router = APIRouter()
 predictor = PredictorService()
 
-@router.post("/", response_model=PredictResponse)
+@router.post("", response_model=PredictResponse)
 async def predict(request: PredictRequest):
     if not predictor.is_ready():
         raise HTTPException(status_code=503, detail="Model not loaded")

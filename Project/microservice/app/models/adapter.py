@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Dict
 from datetime import datetime
 from sqlmodel import SQLModel, Field

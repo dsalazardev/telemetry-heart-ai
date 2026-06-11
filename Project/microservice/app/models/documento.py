@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Optional, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
@@ -19,9 +20,9 @@ class Documento(SQLModel, table=True):
     activo: bool = Field(default=True, description="¿Disponible para RAG?")
     prediccion_id: Optional[int] = Field(default=None, foreign_key="predicciones.id")
     
-    prediccion: Optional["Prediccion"] = Relationship()
+    prediccion: Optional[Prediccion] = Relationship()
     
-    def buscarSimilares(self, query: str) -> List["Documento"]:
+    def buscarSimilares(self, query: str) -> List[Documento]:
         """Delegado a RAGService"""
         from app.services.rag_service import RAGService
         rag = RAGService()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.models.lectura import Lectura
 from app.models.evaluacion import Evaluacion
 from app.models.prediccion import Prediccion

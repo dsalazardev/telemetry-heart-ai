@@ -1,9 +1,8 @@
 from typing import List, Dict, Optional
-from langchain.agents import create_agent
+from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langgraph.checkpoint.memory import InMemorySaver
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from app.core.settings import settings
 from app.services.predictor_service import PredictorService
 from app.services.rag_service import RAGService
@@ -57,7 +56,7 @@ class AgentService:
         self._init_agent()
     
     def _init_agent(self):
-        """Initialize LangChain agent with create_agent"""
+        """Initialize LangChain agent with create_openai_tools_agent"""
         try:
             # LLM
             llm = ChatOpenAI(
@@ -69,20 +68,15 @@ class AgentService:
             # Prompt
             prompt = ChatPromptTemplate.from_messages([
                 ("system", "Eres un asistente médico especializado en cardiología. Ayudas a médicos a evaluar riesgos cardiovasculares y a interpretar resultados de telemetría."),
+                MessagesPlaceholder("chat_history", optional=True),
                 ("human", "{input}"),
+                MessagesPlaceholder("agent_scratchpad"),
             ])
             
-            # Memory
-            self.memory = InMemorySaver()
-            
             # Create agent
-            self.agent = create_agent(
-                llm,
-                self.tools,
-                prompt=prompt,
-                checkpointer=self.memory
-            )
-            print("[OK] LangChain agent initialized with create_agent()")
+            agent = create_openai_tools_agent(llm, self.tools, prompt)
+            self.agent = AgentExecutor(agent=agent, tools=self.tools, verbose=False)
+            print("[OK] LangChain agent initialized with create_openai_tools_agent()")
         except Exception as e:
             print(f"[WARN] Agent initialization error: {e}")
             self.agent = None
@@ -97,10 +91,7 @@ class AgentService:
             }
         
         try:
-            result = self.agent.invoke(
-                {"input": question},
-                config={"configurable": {"thread_id": session_id}}
-            )
+            result = self.agent.invoke({"input": question})
             
             return {
                 "response": result.get("output", "No response"),

@@ -7,7 +7,7 @@ import os
 router = APIRouter()
 predictor = PredictorService()
 
-@router.get("/")
+@router.get("")
 async def health():
     # Check database
     db_status = "ok"  # Simplified for now
