@@ -1,43 +1,69 @@
 import hashlib
+import os
 import time
 from functools import lru_cache
 from logging import getLogger
 from pathlib import Path
+from typing import List, Dict
 
-from langchain_core.embeddings import Embeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_community.vectorstores import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
+from app.core.settings import settings
 
 logger = getLogger(__name__)
 
 _CHROMA_DB_FILE = "chroma.sqlite3"
 
 
-class RagService:
+class RAGService:
     def __init__(
         self,
-        embedding: Embeddings,
-        persist_dir: str,
-        docs_dir: str,
-        chunk_size: int = 800,
-        chunk_overlap: int = 120,
-        retrieval_k: int = 4,
-        separators: list[str] | None = None,
-        retrieval_max_length: int = 2000,
+        embedding=None,
+        persist_dir=None,
+        docs_dir=None,
+        chunk_size=800,
+        chunk_overlap=120,
+        retrieval_k=4,
+        separators=None,
+        retrieval_max_length=2000,
     ):
-        self.embedding = embedding
-        self.persist_dir = Path(persist_dir)
-        self.docs_dir = Path(docs_dir)
+        self.chroma_path = persist_dir or settings.CHROMA_PATH
+        self.persist_dir = Path(self.chroma_path)
+        self.docs_dir = Path(docs_dir) if docs_dir else (
+            Path(__file__).resolve().parent.parent.parent / "data" / "knowledge_base"
+        )
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.retrieval_k = retrieval_k
         self.separators = separators or ["\n## ", "\n### ", "\n\n", "\n", ". ", " "]
         self.retrieval_max_length = retrieval_max_length
-        self.vectorstore: Chroma | None = None
+        self.model = None
+        self.collection = None
+        self.client = None
+        self.vectorstore = None
         self.initialized = False
-        self.chunk_count: int = 0
-        self.doc_count: int = 0
+        self.chunk_count = 0
+        self.doc_count = 0
+        self._init_embedding_model()
+        self._init_chroma()
+
+    def _init_embedding_model(self):
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        self.model = SentenceTransformer(model_name)
+        logger.info("Embedding model loaded: %s", model_name)
+
+    def _init_chroma(self):
+        try:
+            import chromadb
+            self.client = chromadb.PersistentClient(path=self.chroma_path)
+            self.collection = self.client.get_or_create_collection(
+                name="clinical_knowledge",
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info("ChromaDB collection ready: clinical_knowledge")
+        except Exception as e:
+            logger.warning("ChromaDB init error: %s", e)
+            self.client = None
+            self.collection = None
 
     def _chroma_db_exists(self) -> bool:
         return (self.persist_dir / _CHROMA_DB_FILE).exists()
@@ -46,31 +72,25 @@ class RagService:
         self.persist_dir.mkdir(parents=True, exist_ok=True)
 
         if self._chroma_db_exists():
-            try:
-                self.vectorstore = Chroma(
-                    persist_directory=str(self.persist_dir),
-                    embedding_function=self.embedding,
-                )
-                self.initialized = True
-                self.chunk_count = self.vectorstore._collection.count()
-                logger.info(
-                    "Vectorstore cargado desde %s (%d chunks)",
-                    self.persist_dir, self.chunk_count,
-                )
-                return
-            except Exception as e:
-                logger.warning("No se pudo cargar vectorstore existente: %s", e)
+            self.chunk_count = self.collection.count() if self.collection else 0
+            self.initialized = True
+            logger.info(
+                "Vectorstore cargado desde %s (%d chunks)",
+                self.persist_dir, self.chunk_count,
+            )
+            return
 
         documents = []
         for md_file in sorted(self.docs_dir.glob("*.md")):
             try:
-                loader = TextLoader(str(md_file), encoding="utf-8")
-                docs = loader.load()
-                for doc in docs:
-                    doc.metadata["source"] = md_file.name
-                    doc.metadata["section"] = "general"
-                    doc.metadata["version"] = "demo-v1"
-                documents.extend(docs)
+                content = md_file.read_text(encoding="utf-8")
+                documents.append({
+                    "contenido": content,
+                    "titulo": md_file.stem,
+                    "fuente": md_file.name,
+                    "fechaIndexacion": "",
+                    "activo": True,
+                })
                 logger.info("Cargado: %s", md_file.name)
             except Exception as e:
                 logger.error("Error cargando %s: %s", md_file.name, e)
@@ -79,54 +99,98 @@ class RagService:
             logger.warning("No hay documentos para indexar")
             return
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            separators=self.separators,
-        )
-        chunks = splitter.split_documents(documents)
-        for chunk in chunks:
-            chunk_id = hashlib.md5(chunk.page_content.encode()).hexdigest()[:12]
-            chunk.metadata["chunk_id"] = f"chunk_{chunk_id}"
+        for i, doc in enumerate(documents):
+            text = doc["contenido"]
+            emb = self.model.encode([text]).tolist()
+            meta = {
+                "titulo": doc.get("titulo", ""),
+                "fuente": doc.get("fuente", ""),
+                "fechaIndexacion": doc.get("fechaIndexacion", ""),
+                "activo": doc.get("activo", True),
+            }
+            self.collection.add(
+                ids=[f"doc_{i}"],
+                embeddings=emb,
+                documents=[text],
+                metadatas=[meta],
+            )
 
-        self.vectorstore = Chroma.from_documents(
-            documents=chunks,
-            embedding=self.embedding,
-            persist_directory=str(self.persist_dir),
-        )
         self.initialized = True
-        self.chunk_count = len(chunks)
+        self.chunk_count = self.collection.count() if self.collection else 0
         self.doc_count = len(documents)
-        logger.info("Indexados %d chunks de %d documentos", self.chunk_count, self.doc_count)
+        logger.info("Indexados %d documentos", self.doc_count)
 
-    def _get_cached(self, query: str, k: int | None = None) -> list[dict]:
-        """Cache interno: misma query devuelve mismo resultado si hay pocos cambios."""
-        return self._retrieve_impl(query, k)
+    def add_documents(self, documents: List[Dict]):
+        if not self.collection:
+            return
+
+        texts = [doc["contenido"] for doc in documents]
+        embeddings = self.model.encode(texts).tolist()
+
+        ids = [f"doc_{i}" for i in range(len(documents))]
+        metadatas = [{
+            "titulo": doc.get("titulo", ""),
+            "fuente": doc.get("fuente", ""),
+            "fechaIndexacion": doc.get("fechaIndexacion", ""),
+            "activo": doc.get("activo", True),
+        } for doc in documents]
+
+        self.collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
+        )
+        self.chunk_count = self.collection.count()
+
+    def query(self, query_text: str, n_results: int = 5) -> List[Dict]:
+        """Query the vector store"""
+        if not self.collection:
+            return []
+
+        start = time.time()
+        query_embedding = self.model.encode([query_text]).tolist()
+
+        results = self.collection.query(
+            query_embeddings=query_embedding,
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+
+        elapsed = (time.time() - start) * 1000
+        logger.debug("RAG query: %.2fms", elapsed)
+
+        documents = []
+        for i in range(len(results["ids"][0])):
+            documents.append({
+                "id": results["ids"][0][i],
+                "content": results["documents"][0][i],
+                "metadata": results["metadatas"][0][i],
+                "distance": results["distances"][0][i],
+            })
+
+        return documents
 
     def retrieve(self, query: str, k: int | None = None) -> list[dict]:
-        """Síncrono para uso interno. Preferir retrieve_async en contexts async."""
-        return self._retrieve_impl(query, k)
+        k = k or self.retrieval_k
+        results = self.query(query, n_results=k)
+        return [
+            {
+                "content": r["content"][:self.retrieval_max_length],
+                "metadata": r["metadata"],
+                "score": round(1.0 - r.get("distance", 0), 4),
+            }
+            for r in results
+        ]
 
     async def retrieve_async(self, query: str, k: int | None = None) -> list[dict]:
-        """Versión async que no bloquea el event loop."""
         import asyncio
-        return await asyncio.to_thread(self._retrieve_impl, query, k)
+        return await asyncio.to_thread(self.retrieve, query, k)
 
-    def _retrieve_impl(self, query: str, k: int | None = None) -> list[dict]:
-        if not self.vectorstore or not self.initialized:
-            logger.warning("RAG no inicializado")
-            return []
-        k = k or self.retrieval_k
-        try:
-            docs = self.vectorstore.similarity_search_with_score(query, k=k)
-            return [
-                {
-                    "content": doc.page_content[:self.retrieval_max_length],
-                    "metadata": doc.metadata,
-                    "score": round(float(score), 4),
-                }
-                for doc, score in docs
-            ]
-        except Exception as e:
-            logger.error("Error en retrieval: %s", e)
-            return []
+    def get_collection_stats(self) -> Dict:
+        if not self.collection:
+            return {"count": 0}
+        return {"count": self.collection.count()}
+
+    def is_ready(self) -> bool:
+        return self.collection is not None

@@ -1,19 +1,34 @@
-# Microservicio de IA — Capa de Inteligencia Artificial
+# Telemetry Heart AI - Microservice IA
 
-## Responsabilidad Arquitectónica
+Microservicio de Inteligencia Artificial para predicción de riesgo cardiovascular.
 
-Capa aislada de inteligencia artificial que aloja el modelo predictivo de riesgo cardiovascular, los algoritmos de racionalidad (metaheurísticas) para optimización del modelo, y el agente conversacional basado en RAG para proporcionar explicabilidad clínica de las predicciones.
+## Stack
 
-## Alcance Funcional
+- FastAPI (puerto 8001)
+- SQLModel + PostgreSQL
+- LangChain (Agente ReAct)
+- ChromaDB + SentenceTransformer
+- RandomForest + DEAP
 
-- Ejecución del modelo predictivo para clasificación de riesgo cardiovascular basado en las variables fisiológicas del paciente.
-- Implementación de algoritmos de racionalidad y metaheurísticas para balanceo de clases, selección de características y optimización de hiperparámetros.
-- Agente conversacional con capacidades de Retrieval-Augmented Generation (RAG) que proporciona explicaciones clínicas comprensibles sobre cada predicción.
-- Exposición de APIs específicas para consumo de predicciones y consultas al agente conversacional.
-- Entrenamiento, validación y versionado del modelo predictivo.
+## Setup
 
-## Límites del Módulo
+```bash
+cd Project/microservice
+pip install -r requirements.txt
+# Create .env from .env.example
+cp .env.example .env
+# Edit .env with your credentials
+# Run migrations
+alembic upgrade head
+# Start service
+python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
 
-- No gestiona persistencia de datos de pacientes; consume datos a través de la API central.
-- No interactúa directamente con dispositivos IoT ni con el usuario final.
-- No ejecuta reglas de negocio ni orquestación de flujos clínicos.
+## Endpoints
+
+- POST /predict - Predicción de riesgo
+- POST /evaluar - Evaluación de triaje
+- POST /agent/query - Agente conversacional
+- POST /agent/train - Entrenamiento
+- POST /workflow/trigger - Workflow
+- GET /health - Health check

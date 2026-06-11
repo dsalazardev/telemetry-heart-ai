@@ -1,0 +1,633 @@
+{
+  "updatedAt": "2026-06-09T01:18:54.810Z",
+  "createdAt": "2026-06-08T23:17:54.223Z",
+  "id": "cBee4e9grtN7NxXG",
+  "name": "THA - Webhook Telemetria",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "name": "Webhook Telemetria",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "telemetria",
+      "parameters": {
+        "path": "telemetria",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-telemetria-01"
+    },
+    {
+      "name": "INSERT Telemetria",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO telemetrias (frecuenciaCardiaca, spo2, anomaliaEcg, timestamp, estadoProcesamiento, dispositivo_id) VALUES ({{ $json.body.frecuenciaCardiaca }}, {{ $json.body.spo2 }}, '{{ $json.body.anomaliaEcg }}', NOW(), 'recibida', (SELECT id FROM dispositivos WHERE paciente_id = {{ $json.body.paciente_id }} AND activo = true LIMIT 1))"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      },
+      "id": "insert-telemetria-01"
+    },
+    {
+      "name": "INSERT Log Webhook",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_webhook_ok', concat('Telemetr\u00eda paciente ', {{ $json.body.paciente_id }}, ': FC=', {{ $json.body.frecuenciaCardiaca }}, ', SpO2=', {{ $json.body.spo2 }}), true, NOW())"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      },
+      "id": "log-webhook-01"
+    },
+    {
+      "name": "Notificar Microservicio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MICROSERVICE_URL }}/evaluar",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $json.body.paciente_id }}"
+            },
+            {
+              "name": "frecuenciaCardiaca",
+              "value": "={{ $json.body.frecuenciaCardiaca }}"
+            },
+            {
+              "name": "spo2",
+              "value": "={{ $json.body.spo2 }}"
+            },
+            {
+              "name": "anomaliaEcg",
+              "value": "={{ $json.body.anomaliaEcg }}"
+            }
+          ]
+        },
+        "contentType": "json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "notify-micro-01"
+    },
+    {
+      "name": "IF Micro OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-micro",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "eq"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-micro-ok-01"
+    },
+    {
+      "name": "INSERT Log Micro OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_ok', 'Microservicio respondi\u00f3 OK', true, NOW())"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      },
+      "id": "log-micro-ok-01"
+    },
+    {
+      "name": "INSERT Log Micro Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_error', 'Microservicio no disponible', false, NOW())"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      },
+      "id": "log-micro-error-01"
+    },
+    {
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        300
+      ],
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"ok\",\"mensaje\":\"Telemetr\u00eda recibida y procesada\",\"timestamp\":\"{{ $now }}\"}"
+      },
+      "id": "responder-webhook-01"
+    }
+  ],
+  "connections": {
+    "Webhook Telemetria": {
+      "main": [
+        [
+          {
+            "node": "INSERT Telemetria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Telemetria": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Webhook": {
+      "main": [
+        [
+          {
+            "node": "Notificar Microservicio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Microservicio": {
+      "main": [
+        [
+          {
+            "node": "IF Micro OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Micro OK": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Micro OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "INSERT Log Micro Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Micro OK": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Micro Error": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+  "activeVersionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+  "versionCounter": 1,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-06-08T23:17:54.223Z",
+      "createdAt": "2026-06-08T23:17:54.223Z",
+      "role": "workflow:owner",
+      "workflowId": "cBee4e9grtN7NxXG",
+      "projectId": "OhBbW0QDR3wMOvsM",
+      "project": {
+        "updatedAt": "2026-06-08T22:51:58.177Z",
+        "createdAt": "2026-06-08T22:34:49.435Z",
+        "id": "OhBbW0QDR3wMOvsM",
+        "name": "Admin User <admin@telemetry-heart-ai.localj>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      }
+    }
+  ],
+  "tags": [],
+  "parentFolder": null,
+  "activeVersion": {
+    "updatedAt": "2026-06-08T23:17:54.223Z",
+    "createdAt": "2026-06-08T23:17:54.223Z",
+    "versionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+    "workflowId": "cBee4e9grtN7NxXG",
+    "nodes": [
+      {
+        "name": "Webhook Telemetria",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          250,
+          300
+        ],
+        "webhookId": "telemetria",
+        "parameters": {
+          "path": "telemetria",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "webhook-telemetria-01"
+      },
+      {
+        "name": "INSERT Telemetria",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          450,
+          300
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO telemetrias (frecuenciaCardiaca, spo2, anomaliaEcg, timestamp, estadoProcesamiento, dispositivo_id) VALUES ({{ $json.body.frecuenciaCardiaca }}, {{ $json.body.spo2 }}, '{{ $json.body.anomaliaEcg }}', NOW(), 'recibida', (SELECT id FROM dispositivos WHERE paciente_id = {{ $json.body.paciente_id }} AND activo = true LIMIT 1))"
+        },
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        },
+        "id": "insert-telemetria-01"
+      },
+      {
+        "name": "INSERT Log Webhook",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          650,
+          300
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_webhook_ok', concat('Telemetr\u00eda paciente ', {{ $json.body.paciente_id }}, ': FC=', {{ $json.body.frecuenciaCardiaca }}, ', SpO2=', {{ $json.body.spo2 }}), true, NOW())"
+        },
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        },
+        "id": "log-webhook-01"
+      },
+      {
+        "name": "Notificar Microservicio",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          850,
+          300
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.MICROSERVICE_URL }}/evaluar",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "paciente_id",
+                "value": "={{ $json.body.paciente_id }}"
+              },
+              {
+                "name": "frecuenciaCardiaca",
+                "value": "={{ $json.body.frecuenciaCardiaca }}"
+              },
+              {
+                "name": "spo2",
+                "value": "={{ $json.body.spo2 }}"
+              },
+              {
+                "name": "anomaliaEcg",
+                "value": "={{ $json.body.anomaliaEcg }}"
+              }
+            ]
+          },
+          "contentType": "json",
+          "options": {
+            "timeout": 10000
+          }
+        },
+        "id": "notify-micro-01"
+      },
+      {
+        "name": "IF Micro OK",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1050,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "id": "cond-micro",
+                "leftValue": "={{ $json.statusCode }}",
+                "rightValue": 200,
+                "operator": {
+                  "type": "number",
+                  "operation": "eq"
+                }
+              }
+            ]
+          }
+        },
+        "id": "if-micro-ok-01"
+      },
+      {
+        "name": "INSERT Log Micro OK",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          1250,
+          200
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_ok', 'Microservicio respondi\u00f3 OK', true, NOW())"
+        },
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        },
+        "id": "log-micro-ok-01"
+      },
+      {
+        "name": "INSERT Log Micro Error",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2,
+        "position": [
+          1250,
+          400
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_error', 'Microservicio no disponible', false, NOW())"
+        },
+        "credentials": {
+          "postgres": {
+            "id": "q7Lse8miAPXZ0IHU",
+            "name": "PostgreSQL Aiven"
+          }
+        },
+        "id": "log-micro-error-01"
+      },
+      {
+        "name": "Responder Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [
+          1450,
+          300
+        ],
+        "parameters": {
+          "options": {},
+          "respondWith": "json",
+          "responseBody": "={\"status\":\"ok\",\"mensaje\":\"Telemetr\u00eda recibida y procesada\",\"timestamp\":\"{{ $now }}\"}"
+        },
+        "id": "responder-webhook-01"
+      }
+    ],
+    "connections": {
+      "Webhook Telemetria": {
+        "main": [
+          [
+            {
+              "node": "INSERT Telemetria",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "INSERT Telemetria": {
+        "main": [
+          [
+            {
+              "node": "INSERT Log Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "INSERT Log Webhook": {
+        "main": [
+          [
+            {
+              "node": "Notificar Microservicio",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Notificar Microservicio": {
+        "main": [
+          [
+            {
+              "node": "IF Micro OK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Micro OK": {
+        "main": [
+          [
+            {
+              "node": "INSERT Log Micro OK",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "INSERT Log Micro Error",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "INSERT Log Micro OK": {
+        "main": [
+          [
+            {
+              "node": "Responder Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "INSERT Log Micro Error": {
+        "main": [
+          [
+            {
+              "node": "Responder Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Admin User",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-06-09T01:19:45.592Z",
+        "id": 1,
+        "workflowId": "cBee4e9grtN7NxXG",
+        "versionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+        "event": "activated",
+        "userId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      },
+      {
+        "createdAt": "2026-06-09T01:27:12.403Z",
+        "id": 6,
+        "workflowId": "cBee4e9grtN7NxXG",
+        "versionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+        "event": "deactivated",
+        "userId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      },
+      {
+        "createdAt": "2026-06-09T01:29:30.821Z",
+        "id": 9,
+        "workflowId": "cBee4e9grtN7NxXG",
+        "versionId": "b2617d0e-ac30-4909-9c6a-d48822e0a6db",
+        "event": "activated",
+        "userId": "860dcd8d-0ef7-450a-bc39-41758c973847"
+      }
+    ]
+  },
+  "scopes": [
+    "execution:reveal",
+    "workflow:create",
+    "workflow:delete",
+    "workflow:disableRedaction",
+    "workflow:enableRedaction",
+    "workflow:execute",
+    "workflow:execute-chat",
+    "workflow:export",
+    "workflow:list",
+    "workflow:move",
+    "workflow:publish",
+    "workflow:read",
+    "workflow:share",
+    "workflow:unpublish",
+    "workflow:unshare",
+    "workflow:update"
+  ],
+  "checksum": "1f0d9ff3f9aae7e3fa5d8fb5f922ae1ad60d9e7c1d21bd8ef88e13a24860c36c"
+}

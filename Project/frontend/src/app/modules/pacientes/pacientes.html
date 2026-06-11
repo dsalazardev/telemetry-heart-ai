@@ -1,0 +1,139 @@
+<div class="app-container">
+  <app-sidebar></app-sidebar>
+
+  <main class="main-content">
+    <header class="topbar">
+      <div class="view-info">
+        <h1>Gestión de Pacientes</h1>
+        <p>Administración de expedientes y estados de salud</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" (click)="showModal = true">
+          <span>+ Registrar Paciente</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content-body fade-in">
+      <div class="glass-card table-container">
+        <div class="table-header">
+          <div class="search-bar">
+            <span>🔍</span>
+            <input type="text" placeholder="Buscar por nombre o documento..." [(ngModel)]="searchTerm">
+          </div>
+          <div class="filters">
+            <button class="btn btn-sm btn-outline active">Todos</button>
+            <button class="btn btn-sm btn-outline">Alto Riesgo</button>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Paciente</th>
+              <th>Documento</th>
+              <th>Edad</th>
+              <th>Riesgo</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let p of pacientes">
+              <td>
+                <div class="patient-cell">
+                  <div class="avatar-sm">{{ (p.usuario?.nombres?.[0] || '') + (p.usuario?.apellidos?.[0] || '') }}</div>
+                  <div class="info">
+                    <span class="name">{{ p.usuario?.nombres }} {{ p.usuario?.apellidos }}</span>
+                  </div>
+                </div>
+              </td>
+              <td>{{ p.usuario?.documento }}</td>
+              <td>{{ p.fechaNacimiento || 'N/A' }}</td>
+              <td>
+                <span class="risk-badge" [ngClass]="getRiskClass(p.riesgo || 'BAJO')">
+                  {{ p.riesgo || 'ESTABLE' }}
+                </span>
+              </td>
+              <td>
+                <span class="status-dot active"></span>
+                Monitoreando
+              </td>
+              <td class="actions-cell">
+                <button class="btn-icon" [routerLink]="['/pacientes', p.id]" title="Ver detalle">👁️</button>
+                <button class="btn-icon" (click)="editar(p)" title="Editar paciente">✏️</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Empty State -->
+        <div *ngIf="!loading && !pacientes.length" class="table-loader">
+          <p>No se encontraron pacientes registrados.</p>
+          <button class="btn btn-sm btn-primary" (click)="showModal = true" style="margin-top: 1rem;">
+            Registrar el primero
+          </button>
+        </div>
+
+        <div *ngIf="loading" class="table-loader">Cargando pacientes...</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast Notification -->
+<div *ngIf="toast" class="toast" [ngClass]="toast.tipo">
+  <span>{{ toast.tipo === 'success' ? '✅' : '❌' }}</span>
+  <p>{{ toast.mensaje }}</p>
+</div>
+
+<!-- Modal de Registro -->
+<div class="modal-overlay" *ngIf="showModal" (click)="cerrarModal()">
+  <div class="glass-card modal-content fade-in" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>{{ isEditing ? 'Editar Paciente' : 'Registrar Nuevo Paciente' }}</h2>
+      <button class="close-btn" (click)="cerrarModal()">×</button>
+    </div>
+    
+    <form (ngSubmit)="isEditing ? actualizarPaciente() : crearPaciente()" #pacienteForm="ngForm" class="modal-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nombres</label>
+          <input type="text" [(ngModel)]="nuevoPaciente.usuario.nombres" name="nombres" required>
+        </div>
+        <div class="form-group">
+          <label>Apellidos</label>
+          <input type="text" [(ngModel)]="nuevoPaciente.usuario.apellidos" name="apellidos" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Documento de Identidad</label>
+        <input type="text" [(ngModel)]="nuevoPaciente.usuario.documento" name="documento" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Correo Electrónico</label>
+          <input type="email" [(ngModel)]="nuevoPaciente.usuario.correo" name="correo" required>
+        </div>
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="text" [(ngModel)]="nuevoPaciente.usuario.telefono" name="telefono" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Fecha de Nacimiento</label>
+        <input type="date" [(ngModel)]="nuevoPaciente.fechaNacimiento" name="fechaNacimiento" required>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" (click)="cerrarModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" [disabled]="!pacienteForm.valid || guardando">
+          {{ guardando ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Guardar Paciente') }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -15,7 +15,7 @@ class Patologia(SQLModel, table=True):
     factorRiesgoCardiaco: bool
     pesoRiesgoModelo: float
 
-    historiales: List["Historial"] = Relationship()
+    historiales: List["Historial"] = Relationship(back_populates="patologia")
 
 
 class Historial(SQLModel, table=True):
@@ -31,4 +31,4 @@ class Historial(SQLModel, table=True):
     patologia_id: int = Field(foreign_key="patologias.id")
 
     paciente: Optional[Paciente] = Relationship()
-    patologia: Optional[Patologia] = Relationship()
+    patologia: Optional[Patologia] = Relationship(back_populates="historiales")
