@@ -15,7 +15,7 @@ langchain-community==0.3.0
 # Vector store & embeddings
 chromadb==0.6.3
 sentence-transformers==3.4.0
-torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
 
 # ML & metaheuristics
 scikit-learn==1.6.1
@@ -24,7 +24,7 @@ deap==1.4.2
 
 # Data science
 pandas==2.2.3
-numpy==2.2.0
+numpy<2.0.0,>=1.26.0
 
 # Notebooks
 jupyter==1.1.1
