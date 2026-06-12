@@ -1,0 +1,14 @@
+{
+  "paciente_id": 1,
+  "heart_rate": 72,
+  "spo2": 98,
+  "systolic_bp": 118,
+  "diastolic_bp": 76,
+  "cholesterol": 180,
+  "glucose": 90,
+  "age": 35,
+  "sex": "F",
+  "smoker": false,
+  "previous_condition": false,
+  "explain": true
+}

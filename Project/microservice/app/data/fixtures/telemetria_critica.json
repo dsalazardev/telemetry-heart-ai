@@ -1,0 +1,14 @@
+{
+  "event_id": "wearos-20260611-00045",
+  "paciente_id": "P001",
+  "heart_rate": 160,
+  "spo2": 82,
+  "systolic_bp": 200,
+  "diastolic_bp": 120,
+  "cholesterol": 300,
+  "glucose": 250,
+  "age": 72,
+  "sex": "M",
+  "smoker": true,
+  "previous_condition": true
+}

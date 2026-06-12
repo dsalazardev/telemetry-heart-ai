@@ -1,0 +1,467 @@
+{
+  "name": "Telemetry Heart AI - N8n Nivel 1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemetry-heart-ai-evento",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b62c2cf1-6fd9-44d4-bd7b-0e2b57e22f10",
+      "name": "Webhook - Telemetria IoT",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        0
+      ],
+      "webhookId": "telemetry-heart-ai-evento"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction num(value, fallback = null) {\n  if (value === undefined || value === null || value === '') return fallback;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : fallback;\n}\n\nfunction bool(value) {\n  if (typeof value === 'boolean') return value;\n  if (typeof value === 'string') return ['true', '1', 'si', 'sí', 'yes'].includes(value.toLowerCase());\n  return Boolean(value);\n}\n\nreturn items.map((item) => {\n  const body = item.json.body ?? item.json;\n\n  const pacienteId = body.paciente_id ?? body.pacienteId ?? body.patient_id ?? body.patientId ?? null;\n  const dispositivoId = body.dispositivo_id ?? body.dispositivoId ?? body.device_id ?? body.deviceId ?? 'wearos-simulado';\n\n  const heartRate = num(body.heart_rate ?? body.frecuencia_cardiaca ?? body.hr, 0);\n  const spo2 = num(body.spo2 ?? body.oxigenacion, null);\n  const systolicBp = num(body.systolic_bp ?? body.presion_sistolica ?? body.sbp, null);\n  const diastolicBp = num(body.diastolic_bp ?? body.presion_diastolica ?? body.dbp, null);\n  const cholesterol = num(body.cholesterol ?? body.colesterol, null);\n  const glucose = num(body.glucose ?? body.glucosa, null);\n  const age = num(body.age ?? body.edad, null);\n  const smoker = bool(body.smoker ?? body.fumador ?? false);\n\n  const flags = [];\n  if (heartRate >= 130) flags.push('taquicardia >= 130 bpm');\n  if (heartRate > 0 && heartRate <= 45) flags.push('bradicardia <= 45 bpm');\n  if (spo2 !== null && spo2 <= 92) flags.push('SpO2 <= 92%');\n  if (systolicBp !== null && systolicBp >= 160) flags.push('presion sistolica >= 160 mmHg');\n  if (diastolicBp !== null && diastolicBp >= 100) flags.push('presion diastolica >= 100 mmHg');\n  if (cholesterol !== null && cholesterol >= 240) flags.push('colesterol >= 240 mg/dL');\n  if (glucose !== null && glucose >= 180) flags.push('glucosa >= 180 mg/dL');\n\n  const requierePrediccion = flags.length > 0;\n\n  return {\n    json: {\n      paciente_id: pacienteId,\n      dispositivo_id: dispositivoId,\n      timestamp: body.timestamp ?? new Date().toISOString(),\n      heart_rate: heartRate,\n      spo2,\n      systolic_bp: systolicBp,\n      diastolic_bp: diastolicBp,\n      cholesterol,\n      glucose,\n      age,\n      sex: body.sex ?? body.sexo ?? null,\n      chest_pain_type: body.chest_pain_type ?? body.tipo_dolor_pecho ?? null,\n      smoker,\n      previous_condition: bool(body.previous_condition ?? body.antecedente_cardiaco ?? false),\n      raw_payload: body,\n      flags_umbral: flags,\n      requiere_prediccion: requierePrediccion,\n      severidad_reglas: flags.length >= 3 ? 'ALTA' : flags.length >= 1 ? 'MEDIA' : 'BAJA',\n      config: {\n        backend_base_url: 'http://host.docker.internal:8000',\n        microservice_base_url: 'http://host.docker.internal:8010',\n        backend_jwt: 'CAMBIAR_JWT_BACKEND',\n        telegram_bot_token: 'CAMBIAR_TOKEN_TELEGRAM',\n        telegram_chat_id: 'CAMBIAR_CHAT_ID'\n      }\n    }\n  };\n});"
+      },
+      "id": "58058524-bb38-4cb3-8715-16b4812bf31d",
+      "name": "Normalizar y evaluar umbrales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.backend_base_url + '/eventos' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.config.backend_jwt }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $json.paciente_id }}"
+            },
+            {
+              "name": "dispositivo_id",
+              "value": "={{ $json.dispositivo_id }}"
+            },
+            {
+              "name": "tipo",
+              "value": "telemetria_iot"
+            },
+            {
+              "name": "severidad",
+              "value": "={{ $json.severidad_reglas }}"
+            },
+            {
+              "name": "payload",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "9186390f-5468-440e-90a0-061b836fd403",
+      "name": "Backend - Registrar evento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -450,
+        -220
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "92269f87-1e64-4b62-9045-84fa1da6dc34",
+              "leftValue": "={{ $json.requiere_prediccion }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0c969653-e288-419c-8d56-ad7d28068637",
+      "name": "IF - Evento critico",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -450,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.microservice_base_url + '/predecir' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $json.paciente_id }}"
+            },
+            {
+              "name": "heart_rate",
+              "value": "={{ $json.heart_rate }}"
+            },
+            {
+              "name": "spo2",
+              "value": "={{ $json.spo2 }}"
+            },
+            {
+              "name": "systolic_bp",
+              "value": "={{ $json.systolic_bp }}"
+            },
+            {
+              "name": "diastolic_bp",
+              "value": "={{ $json.diastolic_bp }}"
+            },
+            {
+              "name": "cholesterol",
+              "value": "={{ $json.cholesterol }}"
+            },
+            {
+              "name": "glucose",
+              "value": "={{ $json.glucose }}"
+            },
+            {
+              "name": "age",
+              "value": "={{ $json.age }}"
+            },
+            {
+              "name": "sex",
+              "value": "={{ $json.sex }}"
+            },
+            {
+              "name": "chest_pain_type",
+              "value": "={{ $json.chest_pain_type }}"
+            },
+            {
+              "name": "smoker",
+              "value": "={{ $json.smoker }}"
+            },
+            {
+              "name": "previous_condition",
+              "value": "={{ $json.previous_condition }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d877d5d8-26f6-4b6a-a48c-b89d2461d6c0",
+      "name": "Microservice - Predecir riesgo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -170,
+        -40
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalizar y evaluar umbrales').first().json;\nconst pred = $input.first().json ?? {};\n\nconst failed = pred.error !== undefined || pred.message?.includes?.('ECONNREFUSED');\n\nlet riesgo = pred.riesgo ?? pred.risk_level ?? pred.clase ?? null;\nlet score = pred.score ?? pred.probabilidad ?? pred.risk_score ?? null;\nlet fuente = pred.modelo ?? pred.model ?? 'microservice_metaheuristica';\n\nif (failed || riesgo === null) {\n  const n = original.flags_umbral.length;\n  riesgo = n >= 3 ? 'ALTO' : n >= 1 ? 'MEDIO' : 'BAJO';\n  score = n >= 3 ? 0.85 : n >= 1 ? 0.62 : 0.25;\n  fuente = 'fallback_reglas_n8n_por_fallo_microservice';\n}\n\nconst prioridad = riesgo === 'ALTO' || score >= 0.75 ? 'CRITICA' : riesgo === 'MEDIO' || score >= 0.50 ? 'ALTA' : 'MEDIA';\n\nconst resumen = `Paciente ${original.paciente_id ?? 'sin_id'} con riesgo ${riesgo}. Flags: ${original.flags_umbral.join('; ') || 'sin umbrales críticos'}. Score: ${score}. Fuente: ${fuente}.`;\n\nreturn [{\n  json: {\n    ...original,\n    prediccion: pred,\n    riesgo,\n    score,\n    prioridad,\n    fuente_decision: fuente,\n    microservice_fallo: failed,\n    resumen_clinico: resumen,\n    alerta: {\n      paciente_id: original.paciente_id,\n      tipo: 'riesgo_cardiovascular',\n      prioridad,\n      riesgo,\n      score,\n      mensaje: resumen,\n      flags: original.flags_umbral,\n      origen: 'n8n'\n    }\n  }\n}];"
+      },
+      "id": "f4c55fb4-5897-4cbd-841e-10715f099700",
+      "name": "Construir alerta clinica",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        100,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.backend_base_url + '/alertas' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.config.backend_jwt }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $json.paciente_id }}"
+            },
+            {
+              "name": "tipo",
+              "value": "riesgo_cardiovascular"
+            },
+            {
+              "name": "prioridad",
+              "value": "={{ $json.prioridad }}"
+            },
+            {
+              "name": "mensaje",
+              "value": "={{ $json.resumen_clinico }}"
+            },
+            {
+              "name": "payload",
+              "value": "={{ JSON.stringify($json.alerta) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "72da97ce-0a9c-459a-8794-7521a0727daa",
+      "name": "Backend - Crear alerta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        -40
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Construir alerta clinica').first().json.config.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $('Construir alerta clinica').first().json.config.telegram_chat_id }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ '🚨 Telemetry Heart AI\\nPrioridad: ' + $('Construir alerta clinica').first().json.prioridad + '\\nRiesgo: ' + $('Construir alerta clinica').first().json.riesgo + '\\nPaciente: ' + $('Construir alerta clinica').first().json.paciente_id + '\\nScore: ' + $('Construir alerta clinica').first().json.score + '\\nFlags: ' + $('Construir alerta clinica').first().json.flags_umbral.join('; ') }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c4cd66b4-df72-4abf-9cf1-4ba78132b144",
+      "name": "Telegram - Notificar medico",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -40
+      ],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, status: 'alerta_generada', paciente_id: $('Construir alerta clinica').first().json.paciente_id, prioridad: $('Construir alerta clinica').first().json.prioridad, riesgo: $('Construir alerta clinica').first().json.riesgo, score: $('Construir alerta clinica').first().json.score, flags: $('Construir alerta clinica').first().json.flags_umbral, microservice_fallo: $('Construir alerta clinica').first().json.microservice_fallo } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "0bcfe4d5-f91c-439a-aef8-b1629ddc8feb",
+      "name": "HTTP Response - Critico",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        930,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, status: 'telemetria_acumulada', paciente_id: $json.paciente_id, requiere_prediccion: false, flags: $json.flags_umbral, mensaje: 'Sin umbrales críticos en la ventana actual. Se acumula telemetría.' } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ecf5812c-319f-4f1b-92b1-87f2c8a4933c",
+      "name": "HTTP Response - No critico",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -170,
+        210
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Telemetria IoT": {
+      "main": [
+        [
+          {
+            "node": "Normalizar y evaluar umbrales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar y evaluar umbrales": {
+      "main": [
+        [
+          {
+            "node": "Backend - Registrar evento",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Evento critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Evento critico": {
+      "main": [
+        [
+          {
+            "node": "Microservice - Predecir riesgo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Response - No critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microservice - Predecir riesgo": {
+      "main": [
+        [
+          {
+            "node": "Construir alerta clinica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir alerta clinica": {
+      "main": [
+        [
+          {
+            "node": "Backend - Crear alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backend - Crear alerta": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Notificar medico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Notificar medico": {
+      "main": [
+        [
+          {
+            "node": "HTTP Response - Critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4d37553d-bcd2-455f-af65-68eedad94905",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "TelemetryHeartAI-Nivel1",
+  "tags": [
+    {
+      "name": "Sistemas Inteligentes 1"
+    },
+    {
+      "name": "Telemetry Heart AI"
+    }
+  ]
+}

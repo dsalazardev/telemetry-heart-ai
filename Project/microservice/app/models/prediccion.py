@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Optional, Dict, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
@@ -18,7 +16,7 @@ class Prediccion(SQLModel, table=True):
     fecha: datetime = Field(default_factory=datetime.utcnow)
     metadataTecnica: Optional[Dict] = Field(default=None, sa_type=JSON)
     
-    documentos: List[Documento] = Relationship()
+    documentos: List[Documento] = Relationship(back_populates="prediccion")
     
     def interpretarResultado(self) -> str:
         """Devuelve: 'Riesgo {clasificacion}: {probabilidad:.1%}'"""

@@ -1,0 +1,5 @@
+{
+  "action": "optimize",
+  "n_particles": 30,
+  "max_iter": 100
+}

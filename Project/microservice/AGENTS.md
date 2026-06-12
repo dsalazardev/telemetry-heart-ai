@@ -1,136 +1,562 @@
 # AGENTS.md — Microservicio IA
 
-**One-Liner:** Capa aislada de Inteligencia Artificial para predicción de riesgo cardiovascular. Expone API REST (FastAPI :8001) con modelo predictivo (RandomForest), agente conversacional (LangChain + RAG), y metaheurísticas (DEAP AG + PSO).
+**One-Liner:** Capa aislada de Inteligencia Artificial para prediccion de riesgo cardiovascular. Expone API REST (FastAPI :8001) con LangGraph agents (clinical, n8n, pso), RiskEngine con pesos PSO-optimizados, RAG con ChromaDB + providers de embeddings, y metaheuristicas (PSO + AG).
 
 ---
 
-## Stack Tecnológico
+## Stack Tecnologico
 
-| Componente | Tecnología | Versión | Propósito |
+| Componente | Tecnologia | Version | Proposito |
 |-----------|-----------|---------|-----------|
 | Framework web | FastAPI | 0.136.3 | API REST async (puerto 8001) |
 | ORM | SQLModel | 0.0.37 | Modelos BD + schemas Pydantic unificados |
-| Framework agent | LangChain | 0.3.0+ | `create_agent()` + `InMemorySaver` (ctx7 T1) |
-| Vector store | ChromaDB | 0.5.0+ | `PersistentClient` para RAG (ctx7 T3) |
-| Metaheurísticas | DEAP | 1.4.0+ | AG + PSO manual (`Particle` class, ctx7 T4) |
-| Embeddings | sentence-transformers | 3.0+ | `all-MiniLM-L6-v2` (384d, ctx7 T5) |
-| Clasificador | scikit-learn | 1.4.0+ | `RandomForestClassifier` |
+| Framework agent | LangGraph | 0.3.0+ | StateGraph + InMemorySaver |
+| Dev tools | langgraph-cli[inmem] | latest | LangSmith Studio local (`langgraph dev`) |
+| Vector store | ChromaDB | 0.5.0+ | PersistentClient para RAG |
+| Metaheuristicas | DEAP | 1.4.0+ | AG + PSO manual (Particle class) |
+| Embeddings | LangChain providers | — | openai / huggingface / fake |
+| Riesgo | RiskEngine | — | Modelo ponderado con pesos PSO-optimizados |
 | Base de datos | PostgreSQL | — | Misma BD que backend (Aiven Cloud) |
-| Driver async | asyncpg | 0.30+ | Conexión PostgreSQL async |
+| Driver async | asyncpg | 0.30+ | Conexion PostgreSQL async |
 | Testing | pytest + pytest-asyncio | 9.0+ / 0.24+ | Tests async |
-| LLM | OpenAI (gpt-4o-mini) | — | Vía `langchain` |
+| LLM | OpenAI / LM Studio | — | Via langchain providers |
 
 ---
 
 ## Arquitectura
 
-Limpia / Hexagonal con capas organizadas según la guía oficial de FastAPI "Bigger Applications":
+Entry point unico: `app/main.py` (uvicorn app.main:app).
 
-```
+```text
 microservice/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app, lifespan (load model, init Chroma)
-│   ├── config.py            # Settings, env vars via pydantic-settings
-│   │
-│   ├── models/              # SQLModel (5 tablas de BD)
-│   │   ├── __init__.py
-│   │   ├── lectura.py       # Lectura (13 features + target)
-│   │   ├── evaluacion.py    # Evaluacion (FK a pacientes, lecturas, predicciones)
-│   │   ├── prediccion.py    # Prediccion (probabilidad, clasificacion, JSON)
-│   │   ├── documento.py     # Documento (RAG: contenido, embedding ARRAY)
-│   │   └── adapter.py       # Adapter (Workflow: proveedor, endpoint, flujo, token)
-│   │
-│   ├── schemas/             # Pydantic (request/response, no BD)
-│   │   ├── __init__.py
-│   │   ├── predict.py       # PredictRequest, PredictResponse
-│   │   ├── evaluar.py       # EvaluarRequest, EvaluarResponse
-│   │   ├── agent.py         # AgentQuery, AgentResponse
-│   │   └── workflow.py      # WorkflowTrigger, WorkflowResponse
-│   │
-│   ├── routers/             # APIRouter (endpoints REST)
-│   │   ├── __init__.py
-│   │   ├── predict.py       # POST /predict
-│   │   ├── evaluar.py       # POST /evaluar
-│   │   ├── agent.py         # POST /agent/query, /agent/train
-│   │   ├── workflow.py      # POST /workflow/trigger
-│   │   └── health.py        # GET /health
-│   │
-│   ├── services/            # Lógica de negocio
-│   │   ├── __init__.py
-│   │   ├── predictor_service.py      # RandomForest: train, predict, save, load
-│   │   ├── langchain_agent_service.py # create_agent() + 4 tools + InMemorySaver
-│   │   ├── rag_service.py            # Chroma PersistentClient + SentenceTransformer
-│   │   ├── workflow_service.py       # Adapter.ejecutarFlujo + notificarUrgencia
-│   │   ├── genetic_engine.py         # DEAP AG: feature selection
-│   │   └── pso_engine.py             # DEAP PSO manual: hyperparameters
-│   │
-│   ├── core/                # Configuración central
-│   │   ├── __init__.py
-│   │   ├── database.py      # Engine, session factory
-│   │   └── settings.py      # pydantic-settings (env vars)
-│   │
-│   └── utils/               # Utilidades
-│       ├── __init__.py
-│       └── embeddings.py    # Wrapper SentenceTransformer
-│
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py          # Fixtures: test db, client, agent
-│   ├── test_predictor.py
-│   ├── test_agent.py
-│   ├── test_rag.py
-│   ├── test_genetic.py
-│   └── test_pso.py
-│
-├── notebooks/               # Jupyter notebooks
-│   ├── 01-eda.ipynb         # EDA dataset heart.csv
-│   ├── 02-baseline.ipynb    # RandomForest baseline
-│   ├── 03-feature-importance.ipynb  # feature_importances_
-│   ├── 04-metaheuristics.ipynb      # AG + PSO visualización
-│   └── 05-metrics-n3.ipynb  # Métricas antes/después
-│
-├── scripts/
-│   ├── bootstrap.sh         # Descargar heart.csv, instalar deps
-│   ├── train.py             # Entrenar modelo .pkl
-│   └── evaluate.py          # Evaluar métricas
-│
-├── alembic/                 # Migraciones automáticas
-│   ├── env.py
-│   ├── script.py.mako
-│   └── versions/
-│
-├── requirements.txt
-├── pyproject.toml
-└── Dockerfile
+  app/
+    __init__.py
+    main.py                    # FastAPI app + lifespan + auto-descubrimiento agents
+    agents/
+      __init__.py              # load_agents() desde manifest.yaml
+      base.py                  # BaseAgent ABC
+      clinical_subgraph.py     # ClinicalGraph: predictor + RAG + LLM explain
+      n8n_subgraph.py          # N8NGraph: parseo, umbrales, fallback
+      pso_subgraph.py          # PSOGraph: optimizar pesos, evaluar metricas
+      manifest.yaml            # Registro de agents y sus dependencias
+    api/
+      __init__.py
+      routes_health.py         # GET /health
+      routes_ready.py          # GET /ready
+      routes_metrics.py        # GET /metrics/evaluation, POST /rag/reindex
+    core/
+      __init__.py
+      config.py                # Settings (pydantic-settings, .env) + singleton
+      database.py              # Engine async, session factory, create_tables
+      dependencies.py          # get_services, verify_internal_token
+      registry.py              # ProviderRegistry (LLM y embeddings)
+      logging.py               # setup_logging()
+      langsmith.py             # LangSmith client + tracing nativo
+      langgraph_state.py       # ClinicalState, PSOState, N8NState TypedDicts
+    models/
+      __init__.py
+      lectura.py               # 13 features + target
+      evaluacion.py            # FK a pacientes, lecturas, predicciones
+      prediccion.py            # probabilidad, clasificacion, JSON metadata
+      documento.py             # RAG: embedding PG_ARRAY(384)
+      adapter.py               # Workflow: proveedor, endpoint, flujo JSON
+      resolver.py              # create_llm(), create_embeddings()
+    providers/
+      __init__.py              # Importa todos los providers → auto-registro
+      llm_openai.py            # ChatOpenAI via langchain-openai
+      llm_lmstudio.py          # ChatOpenAI con base_url local
+      embeddings_openai.py     # OpenAIEmbeddings
+      embeddings_huggingface.py # HuggingFaceEmbeddings
+      embeddings_fake.py       # FakeEmbeddings (solo dev)
+    schemas/
+      __init__.py
+      predict.py               # PredictRequest, PredictResponse (13 features)
+      prediction.py            # PredictionRequest, PredictionResponse (telemetria)
+      agent.py                 # AgentQuery, AgentResponse
+      workflow.py              # WorkflowTrigger, WorkflowResponse
+      explanation.py           # ClinicalExplanation, EvidenceSource
+      metrics.py               # MetricsRow, MetricsComparison
+    services/
+      __init__.py              # Services: orquesta RiskEngine, RAG, LLM, agents
+      risk_engine.py           # Modelo de riesgo con pesos PSO-optimizados
+      rag_service.py           # ChromaDB + embeddings via provider
+      metrics_service.py       # Accuracy, recall, F1, false negative rate
+      workflow_service.py      # HTTP client para adapters n8n
+      genetic_engine.py        # DEAP AG: feature selection
+      pso_engine.py            # DEAP PSO manual: hiperparametros
+      optimizers/
+        __init__.py
+        base.py                # BaseOptimizer ABC + OptimizerResult
+        pso.py                 # PSOOptimizer para pesos y thresholds
+        registry.py            # OptimizerRegistry
+    tools/
+      __init__.py
+      clinical_tools.py        # predict_risk(), retrieve_guidelines()
+    data/
+      clinical_docs/           # Documentos .md para RAG (3 archivos demo)
+      generate_synthetic.py    # Genera synthetic_cases.csv
+      synthetic_cases.csv      # Datos sinteticos para PSO
+      optimized_weights.json   # Pesos optimizados por PSO
+    config/
+      clinical_params.yaml     # Thresholds, features, fallback, n8n config
+
+  tests/
+    conftest.py                # Fixtures: test DB, test_client con mocks
+    test_agent.py              # ClinicalGraph, PSOGraph, N8NGraph + endpoints
+    test_health.py             # /health, /ready, /
+    test_prediction.py         # RiskEngine: sano, critico, incompleto, dominantes
+    test_predictor.py          # /predecir endpoint
+    test_rag.py                # RAGService con FakeEmbeddings
+    test_registry.py           # ProviderRegistry
+    test_manifest.py           # manifest.yaml + clinical_params.yaml
+    test_models.py             # CRUD Lectura + Adapter
+    test_workflow.py           # /n8n/webhook + /evaluar endpoints
+
+  scripts/
+    bootstrap_chroma.py        # Inicializar ChromaDB con documentos
+    download_heart.py          # Descargar dataset heart.csv
+    test_rag.py                # Test manual de RAG
+    bootstrap.sh               # Setup inicial
+    demo.sh                    # Demo script
+
+  alembic/                     # Migraciones (branch_labels=microservice)
+  notebooks/                   # Jupyter notebooks (EDA, baseline, metaheuristics)
+  langgraph.json               # Config Agent Server para LangSmith Studio
+  requirements.txt
+  pyproject.toml
+  pytest.ini
+  .env / .env.example
+
+  app/
+    studio.py                  # Bootstrap para LangGraph Studio (exporta clinical/n8n/pso_graph)
+    ...
 ```
 
 ---
 
-## Endpoints Principales
+## Flujo de Datos por Agente
 
-| Método | Ruta | Servicio | Descripción |
-|--------|------|----------|-------------|
-| POST | `/predict` | predictor_service | 13 features → probabilidad de riesgo |
-| POST | `/evaluar` | predictor_service | Pipeline completo: Lectura → Prediccion → Evaluacion |
-| POST | `/agent/query` | langchain_agent_service | Chat agente con memoria (thread_id=medico_id) |
-| POST | `/agent/train` | predictor_service | Entrenar modelo con dataset |
-| POST | `/workflow/trigger` | workflow_service | Ejecutar Adapter (n8n/langchain/manual) |
-| GET | `/health` | — | Health check |
+Cada agente implementa un `StateGraph` (LangGraph) con nodos, edges condicionales y estados tipados (`app/core/langgraph_state.py`).
+
+### ClinicalGraph — `POST /predecir`
+
+```
+PredictionRequest (heart_rate, spo2, systolic_bp, age, sex, ...)
+  │
+  ▼
+[normalize_and_predict]
+  │  RiskEngine.predict(data) → {risk_score, risk_level, dominant_factors}
+  │
+  ▼
+_should_explain: ¿request.explain == True?
+  ├── No ──────────────────────────────────────────┐
+  │                                                 │
+  └── Sí                                            │
+      │                                              │
+      ▼                                              │
+[retrieve_rag]                                    │
+  │  RAG.retrieve_async(query=dominant_factors)     │
+  │  → [ {content, metadata, score}, ... ]          │
+  │                                                 │
+  ▼                                                 │
+[explain]                                          │
+  │  Filtra RAG por MIN_RAG_SCORE (0.65)            │
+  │  CLINICAL_PROMPT.format(risk_score, level,      │
+  │    dominant_factors, rag_sources)               │
+  │  LLM.ainvoke(messages) → JSON                   │
+  │  Valida contra ClinicalExplanation schema       │
+  │  Fallback si LLM falla o score < 0.65           │
+  │                                                 │
+  ▼                                                 ▼
+[format_response]                                   ◄┘
+  │  Arma PredictionResponse con:
+  │    - risk_score, risk_level, threshold_exceeded
+  │    - dominant_factors, clinical_explanation
+  │    - rag: {used, sources}
+  │    - model: {technique, weights_version, prompt_version}
+  │
+  ▼
+PredictionResponse → backend / n8n
+```
+
+**Archivos involucrados:**
+| Paso | Archivo:linea | Funcion |
+|------|--------------|---------|
+| Entry | `agents/clinical_subgraph.py:198` | `router.post("/predecir")` |
+| Normalizar | `agents/clinical_subgraph.py:108` | `_normalize_and_predict()` |
+| RiskEngine | `services/risk_engine.py:70` | `predict(data)` → normaliza, sigmoid, clasifica |
+| RAG | `agents/clinical_subgraph.py:113` | `_retrieve_rag()` → `rag.retrieve_async()` |
+| Explain | `agents/clinical_subgraph.py:118` | `_explain()` → LLM + prompt |
+| Formatear | `agents/clinical_subgraph.py:163` | `_format_response()` → PredictionResponse |
+| State | `core/langgraph_state.py:6` | `ClinicalState(TypedDict)` |
+| Trace | LangGraph nativo | Auto-tracing via `LANGCHAIN_TRACING_V2=true` |
 
 ---
 
-## Comunicación con otros módulos
+### N8NGraph — `POST /evaluar`
 
 ```
-Backend ─── HTTP/httpx ───▶ Microservice (:8001 /predict, /evaluar)
-n8n ─────── HTTP/JSON ─────▶ Microservice (:8001 /evaluar, /workflow/trigger)
-Microservice ◀── asyncpg ──▶ PostgreSQL (misma BD que backend)
+{ paciente_id, frecuenciaCardiaca, spo2, systolic_bp, ... }
+  │
+  ▼
+[parse_payload]
+  │  Normaliza nombres de campo (es/en): heart_rate↔frecuencia_cardiaca, etc.
+  │  Convierte tipos: _num(), _bool()
+  │  Deduplicacion: cache por event_id (_EVENT_CACHE, max 1000)
+  │
+  ▼
+[check_thresholds]
+  │  Lee clinical_params.yaml → n8n_thresholds
+  │  Evalua: taquicardia(>=130), bradicardia(<=45), SpO2(<=92),
+  │          sistolica(>=160), diastolica(>=100), colesterol(>=240), glucosa(>=180)
+  │  → threshold_flags: ["taquicardia >= 130 bpm", "SpO2 <= 92%", ...]
+  │
+  ▼
+_needs_prediction: ¿len(flags) > 0?
+  ├── No ───────────────────────────────────┐
+  │                                          │
+  └── Sí                                     │
+      │                                       │
+      ▼                                       │
+[call_clinical]                              │
+  │  Convierte parsed_data → PredictionRequest
+  │  clinical_graph.run(request)             │
+  │  → PredictionResponse                    │
+  │                                          │
+  ▼                                          │
+_clinical_ok: ¿clinical_result sin error?    │
+  ├── No ──▶ [build_fallback] ◀─────────────┘
+  │           │  Reglas del clinical_params.yaml → fallback
+  │           │  crit_flags=3 → ALTO, high_flags=1 → MEDIO
+  │           │  → {risk_score, risk_level, fuente: "fallback_reglas_n8n"}
+  │           │
+  └── Sí ──┐
+            │
+            ▼
+[format_n8n]                                 ◄┘
+  │  Arma n8n_response con:
+  │    - riesgo (ALTO/MEDIO/BAJO), score, prioridad (CRITICA/ALTA/MEDIA)
+  │    - flags_umbral, resumen_clinico, prediccion
+  │    - alerta: {paciente_id, tipo, prioridad, mensaje, origen}
+  │
+  ▼
+{ n8n_response } → n8n workflow
 ```
 
-- **Con backend**: HTTP síncrono vía `httpx.AsyncClient` desde `services/microservice_client.py` (backend)
-- **Con n8n**: Webhooks REST — n8n llama al microservicio para ejecutar evaluaciones y workflows
-- **Con PostgreSQL**: Misma base de datos que backend, 5 tablas nuevas (`lecturas`, `evaluaciones`, `predicciones`, `documentos`, `adapters`)
+**Archivos involucrados:**
+| Paso | Archivo:linea | Funcion |
+|------|--------------|---------|
+| Entry | `agents/n8n_subgraph.py:279` | `router.post("/evaluar")`, `router.post("/n8n/webhook")` |
+| Parseo | `agents/n8n_subgraph.py:128` | `_parse_payload()` |
+| Umbrales | `agents/n8n_subgraph.py:150` | `_check_thresholds()` |
+| Clinical | `agents/n8n_subgraph.py:155` | `_call_clinical()` → ClinicalGraph |
+| Fallback | `agents/n8n_subgraph.py:178` | `_build_fallback()` |
+| Formatear | `agents/n8n_subgraph.py:216` | `_format_n8n()` |
+| Config | `config/clinical_params.yaml:9` | `n8n_thresholds`, `fallback` |
+| State | `core/langgraph_state.py:26` | `N8NState(TypedDict)` |
+
+---
+
+### PSOGraph — `POST /optimize`
+
+```
+?action=optimize&n_particles=30&max_iter=100
+  │
+  ▼
+[load_data]
+  │  Lee synthetic_cases.csv
+  │  → X(500×11 features), y(500 niveles: bajo/medio/alto)
+  │
+  ▼
+_should_optimize: ¿action == "optimize"?
+  ├── No ──▶ [explain_results]
+  │
+  └── Sí
+      │
+      ▼
+[run_pso]  ← asyncio.to_thread (CSV + PSO)
+  │  PSOOptimizer(n_particles, max_iter).optimize(X, y)
+  │  30 particulas exploran espacio n_features+3 dimensiones
+  │  Fitness = 0.45×FNR + 0.25×(1-recall) + 0.20×(1-F1) + 0.10×FPR
+  │  → OptimizerResult: weights, thresholds, bias, convergence_curve
+  │
+  ▼
+[evaluate_metrics]  ← asyncio.to_thread (CSV + metrics)
+  │  MetricsService.compare(X, y, baseline_w, baseline_t, opt_w, opt_t)
+  │  → {baseline, optimized, improvement, delta}
+  │
+  ▼
+_should_explain: ¿action en (optimize, explain)?
+  ├── No ──▶ [export_weights]
+  │
+  └── Sí
+      │
+      ▼
+[explain_results]
+  │  PSO_PROMPT.format(context=resultados + comparacion)
+  │  LLM.ainvoke() → explicacion en lenguaje natural
+  │
+  ▼
+[export_weights]  ← asyncio.to_thread (write_text)
+  │  Guarda optimized_weights.json:
+  │    {weights, thresholds, bias, version, metrics}
+  │
+  ▼
+[format_result]
+  │  {baseline, optimized, delta, weights, thresholds,
+  │   convergence_curve, explanation, runtime_ms}
+  │
+  ▼
+Resultado JSON → dev / demo
+```
+
+**Archivos involucrados:**
+| Paso | Archivo:linea | Funcion |
+|------|--------------|---------|
+| Entry | `agents/pso_subgraph.py:199` | `router.post("/optimize")` |
+| Load | `agents/pso_subgraph.py:79` | `_load_data()` |
+| PSO | `agents/pso_subgraph.py:92` | `_run_pso()` → `PSOOptimizer.optimize()` |
+| PSO core | `services/optimizers/pso.py:47` | `PSOOptimizer` con fitness function |
+| Metricas | `agents/pso_subgraph.py:108` | `_evaluate_metrics()` → `MetricsService.compare()` |
+| Explain | `agents/pso_subgraph.py:123` | `_explain_results()` → LLM |
+| Export | `agents/pso_subgraph.py:137` | `_export_weights()` → optimized_weights.json |
+| Data | `app/data/synthetic_cases.csv` | 500 registros sinteticos (bajo/medio/alto) |
+| State | `core/langgraph_state.py:16` | `PSOState(TypedDict)` |
+
+> **Nota:** Operaciones bloqueantes (CSV, PSO, escritura JSON) envueltas en `asyncio.to_thread()` para no bloquear el event loop ASGI.
+
+---
+
+## LangSmith Studio (Desarrollo Visual)
+
+Visualizacion y depuracion paso a paso de los 3 grafos via LangGraph Agent Server.
+
+**Setup:**
+```bash
+pip install -U "langgraph-cli[inmem]"
+langgraph dev
+# Abre automaticamente: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+```
+
+| Archivo | Proposito |
+|---------|-----------|
+| `langgraph.json` | Config: `"clinical": "app.studio:clinical_graph"`, `"n8n"`, `"pso"` |
+| `app/studio.py` | Bootstrap: instancia Settings, LLM, embeddings, RiskEngine, RAG, 3 agentes. Exporta `clinical_graph`, `n8n_graph`, `pso_graph` |
+
+**Tracing:** LangGraph nativo — sin `RunTree` manual. Cada `graph.ainvoke()` genera trace padre con sub-spans por nodo visibles en Studio. Requiere `LANGCHAIN_TRACING_V2=true` en `.env`.
+
+**FastAPI vs Studio:** El Agent Server (puerto 2024) coexiste con uvicorn (puerto 8001). FastAPI sigue sirviendo los endpoints REST para backend/n8n.
+
+---
+
+## Endpoints
+
+| Metodo | Ruta | Agente/Servicio | Descripcion |
+|--------|------|-----------------|-------------|
+| POST | `/predecir` | ClinicalGraph | 11 features fisiologicas → riesgo + explicacion |
+| POST | `/explicar` | ClinicalGraph | Pregunta del medico + contexto → respuesta con evidencia |
+| POST | `/evaluar` | N8NGraph | Webhook n8n: payload de telemetria → evaluacion umbrales + prediccion |
+| POST | `/n8n/webhook` | N8NGraph | Alias de /evaluar |
+| POST | `/optimize` | PSOGraph | Ejecutar PSO → pesos optimizados, metricas, curva convergencia |
+| GET | `/health` | API | Health check con estado de LLM, embeddings, Chroma, agents |
+| GET | `/ready` | API | Readiness probe: embeddings real, RAG cargado, pesos cargados |
+| GET | `/metrics/evaluation` | API | Comparacion baseline vs optimizado (recall, F1, false negative) |
+| POST | `/rag/reindex` | API | Reindexar documentos clinicos en ChromaDB |
+
+---
+
+## Contratos Cross-Module
+
+### Backend → Microservicio
+
+| Quien | Endpoint | Request Schema | Response Schema |
+|-------|----------|---------------|-----------------|
+| `backend/app/services/microservice_client.py:23` | `POST /predecir` | `PredictionRequest` (`schemas/prediction.py`) | `PredictionResponse` (`schemas/prediction.py`) |
+
+**PredictionRequest** (enviado por el backend):
+```json
+{
+  "paciente_id": 1,
+  "heart_rate": 72,       "spo2": 98,
+  "systolic_bp": 118,     "diastolic_bp": 76,
+  "cholesterol": 180,     "glucose": 90,
+  "age": 35,              "sex": "F",
+  "chest_pain_type": null,"smoker": false,
+  "previous_condition": false, "explain": true
+}
+```
+
+**PredictionResponse** (devuelto al backend, mapeado a `TriajeCreate`):
+```json
+{
+  "paciente_id": 1,
+  "risk_score": 0.12,
+  "risk_level": "bajo",
+  "threshold_exceeded": false,
+  "dominant_factors": ["sin factores dominantes significativos"],
+  "clinical_explanation": "Paciente con perfil de riesgo bajo...",
+  "recommended_action": "Monitoreo continuo sin intervencion inmediata.",
+  "rag": { "used": true, "sources": [...] },
+  "model": { "technique": "PSO-optimized", "weights_version": "pso-v1" }
+}
+```
+
+**Adaptacion en el backend** (`microservice_client.py:44-57`):
+| Campo PredictionResponse | Campo TriajeCreate |
+|--------------------------|-------------------|
+| `risk_level` | `nivelUrgencia` |
+| `risk_score` | `probabilidadRiesgo` |
+| `dominant_factors` | `factoresCriticos` (JSON string) |
+| `clinical_explanation` | `explicacionClinica` |
+| `threshold_exceeded == true` | Genera `AlertaCreate` |
+
+### n8n → Microservicio
+
+| Quien | Endpoint | Request Schema | Response Schema |
+|-------|----------|---------------|-----------------|
+| `n8n/workflows/THA-Webhook-Telemetria.json` (nodo 4) | `POST /evaluar` | `dict` (campos flexibles) | `{n8n_response: {...}}` |
+
+**Request** (enviado por n8n — soporta nombres es/en):
+```json
+{
+  "paciente_id": 1,
+  "frecuenciaCardiaca": 160,   // o "heart_rate"
+  "spo2": 82,
+  "presion_sistolica": 200,    // o "systolic_bp"
+  "presion_diastolica": 120,   // o "diastolic_bp"
+  "colesterol": 300,           // o "cholesterol"
+  "glucosa": 250,              // o "glucose"
+  "edad": 72,                  // o "age"
+  "sexo": "M",                 // o "sex"
+  "fumador": true,             // o "smoker"
+  "dolor_toracico": "asymptomatic" // o "chest_pain_type"
+}
+```
+
+**Response** (devuelto a n8n):
+```json
+{
+  "n8n_response": {
+    "riesgo": "ALTO",
+    "score": 0.85,
+    "prioridad": "CRITICA",
+    "flags_umbral": ["taquicardia >= 130 bpm", "SpO2 <= 92%"],
+    "resumen_clinico": "Paciente 1 con riesgo ALTO. Flags: ...",
+    "prediccion": { "risk_score": 0.85, "risk_level": "alto", ... },
+    "microservice_fallo": false,
+    "alerta": {
+      "paciente_id": 1,
+      "tipo": "riesgo_cardiovascular",
+      "prioridad": "CRITICA",
+      "mensaje": "Paciente 1 con riesgo ALTO...",
+      "flags": ["taquicardia >= 130 bpm"],
+      "origen": "n8n_agent"
+    }
+  }
+}
+```
+
+### Microservicio → PostgreSQL
+
+| Modulo | Tablas | Operaciones |
+|--------|--------|-------------|
+| `core/database.py` | `lecturas`, `predicciones`, `evaluaciones`, `documentos`, `adapters` | `create_all` en startup |
+| `alembic/` | Las 5 tablas | Migracion `7468eec37173` |
+| `models/` (SQLModel) | Las 5 tablas | ORM via `AsyncSession` |
+
+---
+
+## Esquema de Base de Datos
+
+**Instancia:** PostgreSQL Aiven Cloud (compartida con backend).
+**Migracion:** `alembic/versions/7468eec37173_add_microservice_tables.py`
+**Branch:** `branch_labels=("microservice",)` — `depends_on="7468eec37172"` (migracion base del backend).
+
+### `lecturas`
+```sql
+CREATE TABLE lecturas (
+    id            SERIAL PRIMARY KEY,
+    age           INTEGER NOT NULL,
+    sex           INTEGER NOT NULL,       -- 1=M, 0=F
+    cp            INTEGER NOT NULL,       -- tipo dolor toracico 0-3
+    trestbps      INTEGER NOT NULL,       -- presion arterial reposo mmHg
+    chol          INTEGER NOT NULL,       -- colesterol serico mg/dl
+    fbs           BOOLEAN NOT NULL,       -- glucosa ayunas >120 mg/dl
+    restecg       INTEGER NOT NULL,       -- ECG reposo 0-2
+    thalach       INTEGER NOT NULL,       -- FC maxima alcanzada
+    exang         BOOLEAN NOT NULL,       -- angina ejercicio
+    oldpeak       FLOAT NOT NULL,         -- depresion ST
+    slope         INTEGER NOT NULL,       -- pendiente ST 0-2
+    ca            INTEGER NOT NULL,       -- vasos coloreados 0-3
+    thal          INTEGER NOT NULL,       -- talasemia 0-3
+    target        BOOLEAN,                -- NULL=pendiente, TRUE=enfermo, FALSE=sano
+    fechaCreacion TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### `predicciones`
+```sql
+CREATE TABLE predicciones (
+    id                  SERIAL PRIMARY KEY,
+    versionModelo       VARCHAR NOT NULL,     -- "rf-v1.0", "pso-v2"
+    probabilidad        FLOAT NOT NULL,       -- 0.0 a 1.0
+    clasificacion       VARCHAR NOT NULL,     -- "bajo" | "medio" | "alto"
+    importanciaVariables JSON,                -- {feature: importance, ...}
+    tiempoMs            FLOAT NOT NULL,       -- ms de inferencia
+    fecha               TIMESTAMP NOT NULL DEFAULT NOW(),
+    metadataTecnica     JSON                  -- config del modelo, hiperparams
+);
+```
+
+### `evaluaciones`
+```sql
+CREATE TABLE evaluaciones (
+    id               SERIAL PRIMARY KEY,
+    fechaEvaluacion  TIMESTAMP NOT NULL DEFAULT NOW(),
+    origenDatos      VARCHAR NOT NULL,        -- "telemetria" | "manual" | "batch"
+    paciente_id      INTEGER NOT NULL,        -- FK → pacientes.id (BACKEND)
+    lectura_id       INTEGER NOT NULL REFERENCES lecturas(id),
+    prediccion_id    INTEGER NOT NULL REFERENCES predicciones(id)
+);
+-- paciente_id es FK cross-module: la tabla pacientes esta en el backend
+```
+
+### `documentos`
+```sql
+CREATE TABLE documentos (
+    id              SERIAL PRIMARY KEY,
+    titulo          VARCHAR NOT NULL,
+    contenido       TEXT NOT NULL,
+    embedding       FLOAT[],                  -- PG_ARRAY 384 dimensiones
+    fuente          VARCHAR NOT NULL,
+    fechaIndexacion TIMESTAMP NOT NULL DEFAULT NOW(),
+    activo          BOOLEAN NOT NULL DEFAULT TRUE,
+    prediccion_id   INTEGER REFERENCES predicciones(id)
+);
+```
+
+### `adapters`
+```sql
+CREATE TABLE adapters (
+    id             SERIAL PRIMARY KEY,
+    proveedor      VARCHAR NOT NULL,          -- "n8n" | "langchain" | "manual"
+    endpoint       VARCHAR NOT NULL,          -- URL del webhook
+    flujo          JSON,                      -- config del workflow
+    token          VARCHAR NOT NULL,
+    activo         BOOLEAN NOT NULL DEFAULT TRUE,
+    fechaCreacion  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### Relaciones entre tablas
+
+```
+evaluaciones.paciente_id  ──FK──▶  pacientes.id          (backend)
+evaluaciones.lectura_id   ──FK──▶  lecturas.id
+evaluaciones.prediccion_id──FK──▶  predicciones.id
+documentos.prediccion_id  ──FK──▶  predicciones.id
+predicciones.id           ◀──FK──  documentos.prediccion_id
+```
 
 ---
 
@@ -138,259 +564,62 @@ Microservice ◀── asyncpg ──▶ PostgreSQL (misma BD que backend)
 
 - **Archivos**: `snake_case`
 - **Modelos**: Singular (`Lectura`, `Prediccion`) — SQLModel usa el nombre de la clase como tabla
-- **Routers**: Plural (`predict.py`, `evaluaciones.py`)
-- **Servicios**: Sufijo `_service` (`predictor_service.py`, `langchain_agent_service.py`)
-- **Schemas**: Sufijo de operación (`PredictRequest`, `PredictResponse`, `EvaluarRequest`)
-- **Endpoints**: Plural (`/predict`, `/evaluar`)
-- **Tests**: Prefijo `test_` + `_` + nombre del módulo (`test_predictor.py`)
-- **BD**: PostgreSQL en Aiven Cloud (remoto), conexión vía URL con python-dotenv
-- **Notebooks**: Prefijo numérico (`01-eda.ipynb`, `02-baseline.ipynb`)
-- **Scripts**: Verbo en infinitivo (`train.py`, `evaluate.py`, `bootstrap.sh`)
+- **Servicios**: Sufijo `_service` (`rag_service.py`, `metrics_service.py`)
+- **Schemas**: Sufijo de operacion (`PredictRequest`, `PredictResponse`, `PredictionRequest`)
+- **Endpoints**: En espanol/prefijo descriptivo (`/predecir`, `/evaluar`, `/optimize`)
+- **Tests**: Prefijo `test_` + `_` + nombre del modulo (`test_agent.py`)
+- **BD**: PostgreSQL en Aiven Cloud (remoto), conexion via URL con python-dotenv
+- **Entry point**: `uvicorn app.main:app` (NO `main:app`)
 
 ---
 
-## Base de Datos
-
-**Misma instancia PostgreSQL que backend** (Aiven Cloud). El microservicio agrega 5 tablas nuevas:
-
-1. **`lecturas`** — 13 features cardiovascular + target (nullable)
-2. **`evaluaciones`** — paciente_id (FK → `pacientes.id`), lectura_id, prediccion_id
-3. **`predicciones`** — probabilidad, clasificacion, importanciaVariables (JSON), metadataTecnica (JSON)
-4. **`documentos`** — contenido, embedding (ARRAY Float(384)), fuente, prediccion_id (nullable)
-5. **`adapters`** — proveedor, endpoint, flujo (JSON), token
-
-**Migración**: `branch_labels=("microservice",)` + `depends_on="7468eec37172"` (ctx7 T6)
-
-```bash
-alembic revision -m "add microservice tables" \
-    --head=microservice@head \
-    --depends-on=7468eec37172
-```
-
----
-
-## Modelos SQLModel
-
-Basados en las clases `<<microservice>>` y `<<n8n>>` del diagrama UML:
-
-### Lectura (`<<microservice>>`)
-
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| id | int PK | Auto-incremental |
-| age | int | Edad en años |
-| sex | int | 1 = masculino, 0 = femenino |
-| cp | int | Tipo de dolor torácico (0-3) |
-| trestbps | int | Presión arterial en reposo (mmHg) |
-| chol | int | Colesterol sérico (mg/dl) |
-| fbs | bool | Glucosa en ayunas > 120 mg/dl |
-| restecg | int | Resultados electrocardiográficos (0-2) |
-| thalach | int | Frecuencia cardíaca máxima alcanzada |
-| exang | bool | Angina inducida por ejercicio |
-| oldpeak | float | Depresión ST inducida por ejercicio |
-| slope | int | Pendiente del segmento ST (0-2) |
-| ca | int | Número de vasos principales coloreados (0-3) |
-| thal | int | Talasemia (0-3) |
-| target | bool nullable | null = pendiente, true = enfermo, false = sano |
-| fechaCreacion | datetime | Timestamp automático |
-
-**Método**: `exportarVector(): List[float]` — devuelve las 13 features como vector numérico
-
-### Evaluacion (`<<microservice>>`)
-
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| id | int PK | Auto-incremental |
-| fechaEvaluacion | datetime | Timestamp automático |
-| origenDatos | str | "telemetria" \| "manual" \| "batch" |
-| paciente_id | int FK | → `pacientes.id` (backend, cross-module) |
-| lectura_id | int FK | → `lecturas.id` |
-| prediccion_id | int FK | → `predicciones.id` |
-
-### Prediccion (`<<microservice>>`)
-
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| id | int PK | Auto-incremental |
-| versionModelo | str | Versión del modelo (ej: "rf-v1.2") |
-| probabilidad | float | Probabilidad de riesgo (0.0 - 1.0) |
-| clasificacion | str | "bajo" \| "medio" \| "alto" |
-| importanciaVariables | JSON | Dict con feature_importances_ |
-| tiempoMs | float | Tiempo de inferencia en milisegundos |
-| fecha | datetime | Timestamp automático |
-| metadataTecnica | JSON | Config del modelo, hiperparámetros, etc. |
-
-**Método**: `interpretarResultado(): String` — devuelve "Riesgo {clasificacion}: {probabilidad:.1%}"
-
-### Documento (`<<microservice>>`)
-
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| id | int PK | Auto-incremental |
-| titulo | str | Título del documento clínico |
-| contenido | str | Texto completo |
-| embedding | ARRAY(Float(384)) | Vector de 384 dimensiones (ctx7 T2: `sa_column=Column(ARRAY(Float(384)))`) |
-| fuente | str | Origen del documento |
-| fechaIndexacion | datetime | Timestamp automático |
-| activo | bool | ¿Disponible para RAG? |
-| prediccion_id | int FK nullable | → `predicciones.id` |
-
-**Método**: `buscarSimilares(query): List[Documento]` — delegado a `RAGService`
-
-### Adapter (`<<n8n>>`)
-
-Implementa la interfaz `Workflow` del UML.
-
-| Atributo | Tipo | Descripción |
-|----------|------|-------------|
-| id | int PK | Auto-incremental |
-| proveedor | str | "n8n" \| "langchain" \| "manual" |
-| endpoint | str | URL del webhook o endpoint |
-| flujo | JSON | Configuración del workflow (ctx7 T2: `sa_type=JSON`) |
-| token | str | Auth token si aplica |
-| activo | bool | ¿Activo? |
-| fechaCreacion | datetime | Timestamp automático |
-
-**Métodos**:
-- `ejecutarFlujo(triggerTipo: str, payload: dict): dict` — delegado a `WorkflowService`
-- `notificarUrgencia(medico_id: int, mensaje: str): bool` — delegado a `WorkflowService`
-
-**Relaciones cross-module**:
-- `Triaje.workflow_id` (backend) → `adapters.id` (conceptual)
-- `Evento.workflow_id` (backend) → `adapters.id` (conceptual)
-
----
-
-## Cobertura Rúbrica
+## Cobertura Rubrica
 
 ### N2 — LangChain (30% del nivel 2)
 
-| PPTX | Criterio | Artefacto | Ctx7 |
-|------|----------|-----------|------|
-| 07 | LLM | `services/langchain_agent_service.py` — `model="openai:gpt-4o-mini"` | T1 |
-| 07 | ChatPromptTemplate | System prompt + regla `medico_id` | T1 |
-| 07 | Tools | 4 `@tool` decorators (predict_risk, query_patients, rag_explain, format_response) | T1 |
-| 07 | Chain/Agent | `create_agent()` + `InMemorySaver()` + `thread_id` | T1 |
-| 08 | Código | `notebooks/02-baseline.ipynb` (fragmento Python) | — |
-| 08 | CoT | `docs/ejemplo-cot.log` — log del loop ReAct | — |
-| 08 | RAG | `services/rag_service.py` — Chroma + `SentenceTransformer` | T3, T5 |
-| 09 | Video | YouTube 4-10 min demostración | — |
+| PPTX | Criterio | Artefacto |
+|------|----------|-----------|
+| 07 | LLM | `providers/llm_openai.py` — ChatOpenAI via provider registry |
+| 07 | ChatPromptTemplate | `agents/clinical_subgraph.py` — CLINICAL_PROMPT, MEDICO_EXPLAIN_PROMPT |
+| 07 | Tools | `tools/clinical_tools.py` — predict_risk(), retrieve_guidelines() |
+| 07 | Chain/Agent | `agents/clinical_subgraph.py` — StateGraph con nodos normalize→RAG→explain→format |
+| 08 | RAG | `services/rag_service.py` — ChromaDB + embeddings via provider |
+| 09 | Video | YouTube 4-10 min demostracion |
 
-### N3 — Metaheurísticas (20% del nivel 3)
+### N3 — Metaheuristicas (20% del nivel 3)
 
-| PPTX | Criterio | Artefacto | Ctx7 |
-|------|----------|-----------|------|
-| 10 | Selección | ADR-010 — AG + PSO combinados | T4 |
-| 10 | Codificación | `services/genetic_engine.py` — binario 13 bits, fitness = accuracy | T4 |
-| 10 | Parámetros | 50 ind × 20 gen, torneo k=3, cxUniform p=0.8 | T4 |
-| 10 | Parámetros PSO | `services/pso_engine.py` — `Particle` class, 30 part, 3 dim, 30 iter | T4 |
-| 11 | Métrica #1 | Accuracy: 0.82 → 0.87 → 0.91 (+9 puntos porcentuales) | — |
-| 11 | Métrica #2 | Features: 13 → 7 (−46%) | — |
-| 11 | Visualización | Curvas de convergencia, matriz de confusión | — |
+| PPTX | Criterio | Artefacto |
+|------|----------|-----------|
+| 10 | Seleccion | AG + PSO combinados |
+| 10 | Codificacion | `services/optimizers/pso.py` — PSO para pesos + thresholds |
+| 10 | Parametros | 30 particulas × 100 iteraciones, w=0.7, c1=c2=1.5 |
+| 11 | Metrica #1 | Accuracy, recall, F1 en `services/metrics_service.py` |
+| 11 | Metrica #2 | Comparacion baseline vs optimizado en `/metrics/evaluation` |
+| 11 | Visualizacion | Curvas de convergencia en `OptimizerResult.convergence_curve` |
 
 ---
 
-## Decisiones Arquitectónicas
+## Mapeo UML → Codigo
 
-Ver `exploracion-definitiva.md` para detalles completos de cada ADR:
-
-- **ADR-008**: Framework de Agente — `create_agent()` + `InMemorySaver` (ctx7 T1)
-- **ADR-009**: Vector Store — Chroma `PersistentClient` (ctx7 T3)
-- **ADR-010**: Metaheurísticas — DEAP AG + PSO manual (ctx7 T4)
-- **ADR-011**: Clasificador — RandomForest (`feature_importances_` directo)
-- **ADR-012**: Embeddings — `sentence-transformers/all-MiniLM-L6-v2` (ctx7 T5)
-- **ADR-013**: Memoria Agent — `InMemorySaver()` + `thread_id` (ctx7 T1)
-- **ADR-014**: Migración BD — `branch_labels` + `depends_on` (ctx7 T6)
-- **ADR-015**: Modelo Adapter — Corrección UML: 5º modelo es Adapter, no Optimizacion
-
----
-
-## Mapeo UML → Código
-
-| Concepto UML | Implementación |
+| Concepto UML | Implementacion |
 |-------------|---------------|
 | Clase `<<microservice>>` | Modelo SQLModel en `models/` |
-| `Lectura.exportarVector()` | Método del modelo |
-| `Prediccion.interpretarResultado()` | Método del modelo |
+| `Lectura.exportarVector()` | Metodo del modelo |
+| `Prediccion.interpretarResultado()` | Metodo del modelo |
 | `Documento.buscarSimilares()` | Delegado a `services/rag_service.py` |
 | `Adapter.ejecutarFlujo()` | Delegado a `services/workflow_service.py` |
 | `Adapter.notificarUrgencia()` | Delegado a `services/workflow_service.py` |
-| `Workflow` (interface) | Protocol/ABC en `services/workflow_service.py` |
-| Relación `Evaluacion → Paciente` | `paciente_id` FK → `pacientes.id` (backend) |
-| Relación `Triaje → Workflow` | `workflow_id` → `adapters.id` (conceptual) |
-| `embedding: List~Float~` | `sa_column=Column(ARRAY(Float(384)))` (ctx7 T2) |
-| `importanciaVariables: JSON` | `sa_type=JSON` (ctx7 T2) |
-| `flujo: Object` | `sa_type=JSON` (ctx7 T2) |
-
----
-
-## Estructura de Directorios
-
-```
-Project/microservice/
-├── app/
-│   ├── main.py                 # FastAPI app + lifespan
-│   ├── config.py               # Settings
-│   ├── models/
-│   │   ├── lectura.py          # 13 features + target
-│   │   ├── evaluacion.py       # FK a pacientes, lecturas, predicciones
-│   │   ├── prediccion.py       # probabilidad + JSON
-│   │   ├── documento.py        # RAG: embedding ARRAY(384)
-│   │   └── adapter.py          # Workflow: proveedor, endpoint, flujo
-│   ├── schemas/
-│   │   ├── predict.py          # PredictRequest/Response
-│   │   ├── evaluar.py          # EvaluarRequest/Response
-│   │   ├── agent.py            # AgentQuery/Response
-│   │   └── workflow.py         # WorkflowTrigger/Response
-│   ├── routers/
-│   │   ├── predict.py          # POST /predict
-│   │   ├── evaluar.py          # POST /evaluar
-│   │   ├── agent.py            # POST /agent/query, /agent/train
-│   │   ├── workflow.py         # POST /workflow/trigger
-│   │   └── health.py           # GET /health
-│   ├── services/
-│   │   ├── predictor_service.py         # RandomForest
-│   │   ├── langchain_agent_service.py  # create_agent + 4 tools
-│   │   ├── rag_service.py             # Chroma + embeddings
-│   │   ├── workflow_service.py        # Adapter + notificaciones
-│   │   ├── genetic_engine.py          # DEAP AG
-│   │   └── pso_engine.py              # DEAP PSO manual
-│   ├── core/
-│   │   ├── database.py         # Engine + session
-│   │   └── settings.py         # pydantic-settings
-│   └── utils/
-│       └── embeddings.py       # SentenceTransformer wrapper
-├── tests/
-│   ├── conftest.py             # Fixtures
-│   ├── test_predictor.py
-│   ├── test_agent.py
-│   ├── test_rag.py
-│   ├── test_genetic.py
-│   └── test_pso.py
-├── notebooks/
-│   ├── 01-eda.ipynb            # EDA
-│   ├── 02-baseline.ipynb       # Baseline
-│   ├── 03-feature-importance.ipynb
-│   ├── 04-metaheuristics.ipynb
-│   └── 05-metrics-n3.ipynb     # Métricas
-├── scripts/
-│   ├── bootstrap.sh            # Setup
-│   ├── train.py                # Entrenar .pkl
-│   └── evaluate.py             # Métricas
-├── alembic/                    # Migraciones
-├── requirements.txt
-├── pyproject.toml
-└── Dockerfile
-```
+| Relacion `Evaluacion → Paciente` | `paciente_id` FK → `pacientes.id` (backend) |
+| `embedding: List~Float~` | `sa_column=Column(PG_ARRAY(Float))` |
+| `importanciaVariables: JSON` | `sa_type=JSON` |
+| `flujo: Object` | `sa_type=JSON` |
 
 ---
 
 ## Referencias
 
 - `../Documents/Diagrama UML.md` — 5 modelos exactos del sistema
-- `../Rubric/Proyecto final_SI1_UCaldas.md` — Rúbrica N2 + N3
-- `../openspec/changes/microservicio-ia/exploracion-definitiva.md` — ADRs y validación ctx7
+- `../Rubric/Proyecto final_SI1_UCaldas.md` — Rubrica N2 + N3
 - `../Project/backend/AGENTS.md` — Template de estructura y convenciones
 - `../Project/backend/app/services/microservice_client.py` — Contrato HTTP con backend
-- `../Project/backend/app/core/settings.py` — `MICROSERVICE_URL = "http://localhost:8001"`
-- `../Project/backend/alembic/versions/7468eec37172_init.py` — Migración base (depends_on)
+- `exploracion-definitiva.md` — ADRs y validacion ctx7 (historico)

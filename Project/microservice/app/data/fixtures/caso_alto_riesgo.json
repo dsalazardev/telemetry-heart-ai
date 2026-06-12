@@ -1,0 +1,15 @@
+{
+  "paciente_id": 3,
+  "heart_rate": 160,
+  "spo2": 82,
+  "systolic_bp": 200,
+  "diastolic_bp": 120,
+  "cholesterol": 300,
+  "glucose": 250,
+  "age": 72,
+  "sex": "M",
+  "chest_pain_type": "asymptomatic",
+  "smoker": true,
+  "previous_condition": true,
+  "explain": true
+}

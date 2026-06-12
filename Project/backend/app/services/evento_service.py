@@ -3,8 +3,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dispositivo import Evento, Telemetria
+from app.models.dispositivo import Evento, Telemetria, Dispositivo
 from app.schemas.dispositivo import EventoCreate
+from app.services import prediccion_service
 
 
 async def obtener_evento_activo(db: AsyncSession, tipo: str, ventana_minutos: int = 5) -> Optional[Evento]:
@@ -54,14 +55,45 @@ async def agregar_telemetria_a_evento(db: AsyncSession, telemetria: Telemetria,
 
 
 async def evaluar_umbrales(db: AsyncSession, evento_id: int) -> dict:
-    # Placeholder: en producción leería app/config/umbrales.json y compararía valorAgregado
     stmt = select(Evento).where(Evento.id == evento_id)
     result = await db.execute(stmt)
     evento = result.scalar_one_or_none()
     if not evento:
         return {"status": "not_found"}
 
-    # Simulación: si hay más de 3 lecturas, umbral superado
-    if evento.lecturas >= 3:
-        return {"status": "umbral_superado", "lecturas": evento.lecturas}
-    return {"status": "normal", "lecturas": evento.lecturas}
+    stmt_tel = select(Telemetria).where(Telemetria.evento_id == evento_id)
+    result_tel = await db.execute(stmt_tel)
+    telemetrias = result_tel.scalars().all()
+
+    if not telemetrias:
+        return {"status": "sin_telemetria", "evento_id": evento_id}
+
+    ultima = telemetrias[-1]
+    stmt_disp = select(Dispositivo).where(Dispositivo.id == ultima.dispositivo_id)
+    result_disp = await db.execute(stmt_disp)
+    dispositivo = result_disp.scalar_one_or_none()
+
+    datos_microservicio = {
+        "heart_rate": ultima.frecuenciaCardiaca,
+        "spo2": ultima.spo2,
+        "paciente_id": dispositivo.paciente_id if dispositivo else None,
+        "explain": True,
+    }
+
+    resultado_pred = await prediccion_service.procesar_prediccion(
+        db=db,
+        datos_lectura=datos_microservicio,
+        paciente_id=dispositivo.paciente_id if dispositivo else 0,
+    )
+
+    evento.valorAgregado = {
+        "risk_score": resultado_pred.get("risk_score"),
+        "risk_level": resultado_pred.get("risk_level"),
+        "threshold_exceeded": resultado_pred.get("threshold_exceeded"),
+    }
+    await db.commit()
+    await db.refresh(evento)
+
+    resultado_pred["evento_id"] = evento_id
+    resultado_pred["status"] = resultado_pred.get("status", "ok")
+    return resultado_pred
