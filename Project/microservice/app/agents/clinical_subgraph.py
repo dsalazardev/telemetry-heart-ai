@@ -8,7 +8,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from fastapi import APIRouter, Depends
 
 from app.core.langgraph_state import ClinicalState
-from app.core.langsmith import trace_node
 from app.core.dependencies import get_services
 from app.schemas.explanation import ClinicalExplanation, ExplainRequest, ExplainResponse
 from app.schemas.prediction import PredictionRequest, PredictionResponse
@@ -117,7 +116,6 @@ class ClinicalGraph(BaseAgent):
     def _should_explain(self, state: ClinicalState) -> bool:
         return bool(state["request"] and state["request"].explain)
 
-    @trace_node("normalize_and_predict")
     async def _normalize_and_predict(self, state: ClinicalState) -> dict:
         req = state["request"]
         if req is None:
@@ -126,7 +124,6 @@ class ClinicalGraph(BaseAgent):
         risk = self.risk_engine.predict(data)
         return {"features": data, "risk_result": risk}
 
-    @trace_node("retrieve_rag")
     async def _retrieve_rag(self, state: ClinicalState) -> dict:
         dominant = state["risk_result"].get("dominant_factors", [])
         query = ", ".join(dominant) if dominant else "factores de riesgo cardiovascular"
@@ -134,7 +131,6 @@ class ClinicalGraph(BaseAgent):
         sources = await self.rag.retrieve_async(query, k=k)
         return {"rag_sources": sources}
 
-    @trace_node("explain")
     async def _explain(self, state: ClinicalState) -> dict:
         risk = state["risk_result"]
         k = getattr(self.rag, "retrieval_k", 4)
@@ -187,7 +183,6 @@ class ClinicalGraph(BaseAgent):
                 "clinical_explanation_structured": fallback.model_dump(),
             }
 
-    @trace_node("format_response")
     async def _format_response(self, state: ClinicalState) -> dict:
         req = state["request"]
         risk = state["risk_result"]

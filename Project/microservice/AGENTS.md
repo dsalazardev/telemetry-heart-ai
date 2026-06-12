@@ -11,6 +11,7 @@
 | Framework web | FastAPI | 0.136.3 | API REST async (puerto 8001) |
 | ORM | SQLModel | 0.0.37 | Modelos BD + schemas Pydantic unificados |
 | Framework agent | LangGraph | 0.3.0+ | StateGraph + InMemorySaver |
+| Dev tools | langgraph-cli[inmem] | latest | LangSmith Studio local (`langgraph dev`) |
 | Vector store | ChromaDB | 0.5.0+ | PersistentClient para RAG |
 | Metaheuristicas | DEAP | 1.4.0+ | AG + PSO manual (Particle class) |
 | Embeddings | LangChain providers | — | openai / huggingface / fake |
@@ -50,7 +51,7 @@ microservice/
       dependencies.py          # get_services, verify_internal_token
       registry.py              # ProviderRegistry (LLM y embeddings)
       logging.py               # setup_logging()
-      langsmith.py             # LangSmith tracing
+      langsmith.py             # LangSmith client + tracing nativo
       langgraph_state.py       # ClinicalState, PSOState, N8NState TypedDicts
     models/
       __init__.py
@@ -120,10 +121,15 @@ microservice/
 
   alembic/                     # Migraciones (branch_labels=microservice)
   notebooks/                   # Jupyter notebooks (EDA, baseline, metaheuristics)
+  langgraph.json               # Config Agent Server para LangSmith Studio
   requirements.txt
   pyproject.toml
   pytest.ini
   .env / .env.example
+
+  app/
+    studio.py                  # Bootstrap para LangGraph Studio (exporta clinical/n8n/pso_graph)
+    ...
 ```
 
 ---
@@ -138,7 +144,7 @@ Cada agente implementa un `StateGraph` (LangGraph) con nodos, edges condicionale
 PredictionRequest (heart_rate, spo2, systolic_bp, age, sex, ...)
   │
   ▼
-[normalize_and_predict]  ← trace_node("normalize_and_predict")
+[normalize_and_predict]
   │  RiskEngine.predict(data) → {risk_score, risk_level, dominant_factors}
   │
   ▼
@@ -148,12 +154,12 @@ _should_explain: ¿request.explain == True?
   └── Sí                                            │
       │                                              │
       ▼                                              │
-[retrieve_rag]  ← trace_node("retrieve_rag")        │
+[retrieve_rag]                                    │
   │  RAG.retrieve_async(query=dominant_factors)     │
   │  → [ {content, metadata, score}, ... ]          │
   │                                                 │
   ▼                                                 │
-[explain]  ← trace_node("explain")                   │
+[explain]                                          │
   │  Filtra RAG por MIN_RAG_SCORE (0.65)            │
   │  CLINICAL_PROMPT.format(risk_score, level,      │
   │    dominant_factors, rag_sources)               │
@@ -162,7 +168,7 @@ _should_explain: ¿request.explain == True?
   │  Fallback si LLM falla o score < 0.65           │
   │                                                 │
   ▼                                                 ▼
-[format_response]  ← trace_node("format_response") ◄┘
+[format_response]                                   ◄┘
   │  Arma PredictionResponse con:
   │    - risk_score, risk_level, threshold_exceeded
   │    - dominant_factors, clinical_explanation
@@ -183,7 +189,7 @@ PredictionResponse → backend / n8n
 | Explain | `agents/clinical_subgraph.py:118` | `_explain()` → LLM + prompt |
 | Formatear | `agents/clinical_subgraph.py:163` | `_format_response()` → PredictionResponse |
 | State | `core/langgraph_state.py:6` | `ClinicalState(TypedDict)` |
-| Trace | `core/langsmith.py:22` | `trace_node()` decorator |
+| Trace | LangGraph nativo | Auto-tracing via `LANGCHAIN_TRACING_V2=true` |
 
 ---
 
@@ -193,13 +199,13 @@ PredictionResponse → backend / n8n
 { paciente_id, frecuenciaCardiaca, spo2, systolic_bp, ... }
   │
   ▼
-[parse_payload]  ← trace_node("parse_payload")
+[parse_payload]
   │  Normaliza nombres de campo (es/en): heart_rate↔frecuencia_cardiaca, etc.
   │  Convierte tipos: _num(), _bool()
   │  Deduplicacion: cache por event_id (_EVENT_CACHE, max 1000)
   │
   ▼
-[check_thresholds]  ← trace_node("check_thresholds")
+[check_thresholds]
   │  Lee clinical_params.yaml → n8n_thresholds
   │  Evalua: taquicardia(>=130), bradicardia(<=45), SpO2(<=92),
   │          sistolica(>=160), diastolica(>=100), colesterol(>=240), glucosa(>=180)
@@ -212,7 +218,7 @@ _needs_prediction: ¿len(flags) > 0?
   └── Sí                                     │
       │                                       │
       ▼                                       │
-[call_clinical]  ← trace_node                │
+[call_clinical]                              │
   │  Convierte parsed_data → PredictionRequest
   │  clinical_graph.run(request)             │
   │  → PredictionResponse                    │
@@ -227,7 +233,7 @@ _clinical_ok: ¿clinical_result sin error?    │
   └── Sí ──┐
             │
             ▼
-[format_n8n]  ← trace_node ◄────────────────┘
+[format_n8n]                                 ◄┘
   │  Arma n8n_response con:
   │    - riesgo (ALTO/MEDIO/BAJO), score, prioridad (CRITICA/ALTA/MEDIA)
   │    - flags_umbral, resumen_clinico, prediccion
@@ -257,7 +263,7 @@ _clinical_ok: ¿clinical_result sin error?    │
 ?action=optimize&n_particles=30&max_iter=100
   │
   ▼
-[load_data]  ← trace_node("load_data")
+[load_data]
   │  Lee synthetic_cases.csv
   │  → X(500×11 features), y(500 niveles: bajo/medio/alto)
   │
@@ -268,14 +274,14 @@ _should_optimize: ¿action == "optimize"?
   └── Sí
       │
       ▼
-[run_pso]  ← trace_node("run_pso")
+[run_pso]  ← asyncio.to_thread (CSV + PSO)
   │  PSOOptimizer(n_particles, max_iter).optimize(X, y)
   │  30 particulas exploran espacio n_features+3 dimensiones
   │  Fitness = 0.45×FNR + 0.25×(1-recall) + 0.20×(1-F1) + 0.10×FPR
   │  → OptimizerResult: weights, thresholds, bias, convergence_curve
   │
   ▼
-[evaluate_metrics]  ← trace_node
+[evaluate_metrics]  ← asyncio.to_thread (CSV + metrics)
   │  MetricsService.compare(X, y, baseline_w, baseline_t, opt_w, opt_t)
   │  → {baseline, optimized, improvement, delta}
   │
@@ -286,12 +292,12 @@ _should_explain: ¿action en (optimize, explain)?
   └── Sí
       │
       ▼
-[explain_results]  ← trace_node
+[explain_results]
   │  PSO_PROMPT.format(context=resultados + comparacion)
   │  LLM.ainvoke() → explicacion en lenguaje natural
   │
   ▼
-[export_weights]  ← trace_node
+[export_weights]  ← asyncio.to_thread (write_text)
   │  Guarda optimized_weights.json:
   │    {weights, thresholds, bias, version, metrics}
   │
@@ -316,6 +322,30 @@ Resultado JSON → dev / demo
 | Export | `agents/pso_subgraph.py:137` | `_export_weights()` → optimized_weights.json |
 | Data | `app/data/synthetic_cases.csv` | 500 registros sinteticos (bajo/medio/alto) |
 | State | `core/langgraph_state.py:16` | `PSOState(TypedDict)` |
+
+> **Nota:** Operaciones bloqueantes (CSV, PSO, escritura JSON) envueltas en `asyncio.to_thread()` para no bloquear el event loop ASGI.
+
+---
+
+## LangSmith Studio (Desarrollo Visual)
+
+Visualizacion y depuracion paso a paso de los 3 grafos via LangGraph Agent Server.
+
+**Setup:**
+```bash
+pip install -U "langgraph-cli[inmem]"
+langgraph dev
+# Abre automaticamente: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+```
+
+| Archivo | Proposito |
+|---------|-----------|
+| `langgraph.json` | Config: `"clinical": "app.studio:clinical_graph"`, `"n8n"`, `"pso"` |
+| `app/studio.py` | Bootstrap: instancia Settings, LLM, embeddings, RiskEngine, RAG, 3 agentes. Exporta `clinical_graph`, `n8n_graph`, `pso_graph` |
+
+**Tracing:** LangGraph nativo — sin `RunTree` manual. Cada `graph.ainvoke()` genera trace padre con sub-spans por nodo visibles en Studio. Requiere `LANGCHAIN_TRACING_V2=true` en `.env`.
+
+**FastAPI vs Studio:** El Agent Server (puerto 2024) coexiste con uvicorn (puerto 8001). FastAPI sigue sirviendo los endpoints REST para backend/n8n.
 
 ---
 

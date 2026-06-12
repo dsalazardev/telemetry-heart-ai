@@ -6,7 +6,6 @@ from langgraph.graph import StateGraph, START, END
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.langgraph_state import N8NState
-from app.core.langsmith import trace_node
 from app.core.dependencies import get_services
 from app.services.risk_engine import RiskEngine
 from app.schemas.prediction import PredictionRequest, PredictionResponse
@@ -134,7 +133,6 @@ class N8NGraph(BaseAgent):
     def _clinical_ok(self, state: N8NState) -> bool:
         return state.get("clinical_result") is not None and "error" not in state["clinical_result"]
 
-    @trace_node("parse_payload")
     async def _parse_payload(self, state: N8NState) -> dict:
         body = state["raw_payload"]
         parsed = {
@@ -155,13 +153,11 @@ class N8NGraph(BaseAgent):
         }
         return {"parsed_data": parsed}
 
-    @trace_node("check_thresholds")
     async def _check_thresholds(self, state: N8NState) -> dict:
         t = self.config.get("n8n_thresholds", self.config) if isinstance(self.config, dict) else {}
         flags = _check_thresholds(state["parsed_data"], thresholds=t)
         return {"threshold_flags": flags, "action": "predict" if flags else "passthrough"}
 
-    @trace_node("call_clinical")
     async def _call_clinical(self, state: N8NState) -> dict:
         if self.clinical_graph is None:
             return {"clinical_result": {"error": "clinical_graph no disponible"}}
@@ -188,7 +184,6 @@ class N8NGraph(BaseAgent):
         except Exception as e:
             return {"clinical_result": {"error": str(e)}}
 
-    @trace_node("build_fallback")
     async def _build_fallback(self, state: N8NState) -> dict:
         fb = self.config.get("fallback", {})
         crit_flags = fb.get("critical_flags", 3)
@@ -213,7 +208,6 @@ class N8NGraph(BaseAgent):
             }
         }
 
-    @trace_node("format_n8n")
     async def _format_n8n(self, state: N8NState) -> dict:
         pred = state.get("clinical_result") or {}
         flags = state.get("threshold_flags", [])

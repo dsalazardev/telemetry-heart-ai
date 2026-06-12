@@ -1,3 +1,4 @@
+import asyncio
 import json
 from logging import getLogger
 from pathlib import Path
@@ -10,7 +11,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from fastapi import APIRouter, Depends
 
 from app.core.langgraph_state import PSOState
-from app.core.langsmith import trace_node
 from app.core.dependencies import get_services
 from app.services.optimizers.pso import PSOOptimizer
 from app.services.optimizers.base import OptimizerResult
@@ -81,50 +81,51 @@ class PSOGraph(BaseAgent):
     def _should_explain(self, state: PSOState) -> bool:
         return state.get("action") in ("optimize", "explain")
 
-    @trace_node("load_data")
     async def _load_data(self, state: PSOState) -> dict:
         try:
             if Path(self.data_path).exists():
-                X, y = _load_data(self.data_path)
+                X, y = await asyncio.to_thread(_load_data, self.data_path)
                 return {"result": {"X_shape": X.shape, "y_distribution": dict(zip(*np.unique(y, return_counts=True)))}}
             return {"error": f"No se encuentra {self.data_path}"}
         except Exception as e:
             return {"error": str(e)}
 
-    @trace_node("run_pso")
     async def _run_pso(self, state: PSOState) -> dict:
         try:
-            X, y = _load_data(self.data_path)
+            X, y = await asyncio.to_thread(_load_data, self.data_path)
             optimizer = PSOOptimizer(
                 n_particles=state.get("n_particles", 30),
                 max_iter=state.get("max_iter", 100),
             )
-            result: OptimizerResult = optimizer.optimize(X, y)
+            result: OptimizerResult = await asyncio.to_thread(optimizer.optimize, X, y)
             return {"result": result.model_dump()}
         except Exception as e:
             return {"error": str(e)}
 
-    @trace_node("evaluate_metrics")
     async def _evaluate_metrics(self, state: PSOState) -> dict:
         try:
-            X, y = _load_data(self.data_path)
+            opt_result = state.get("result")
+            if not opt_result:
+                return {"error": "No optimization result available"}
+            X, y = await asyncio.to_thread(_load_data, self.data_path)
             n = X.shape[1]
             baseline_w = np.ones(n) / n
             baseline_t = [0.40, 0.70]
-            opt_w = np.array(state["result"]["weights"])
-            opt_t = state["result"]["thresholds"]
-            opt_b = state["result"].get("bias", 0.0)
+            opt_w = np.array(opt_result["weights"])
+            opt_t = opt_result["thresholds"]
+            opt_b = opt_result.get("bias", 0.0)
 
             ms = MetricsService()
-            comparison = ms.compare(X, y, baseline_w, baseline_t, opt_w, opt_t, 0.0, opt_b)
+            comparison = await asyncio.to_thread(
+                ms.compare, X, y, baseline_w, baseline_t, opt_w, opt_t, 0.0, opt_b
+            )
             return {"comparison": comparison}
         except Exception as e:
             return {"error": str(e)}
 
-    @trace_node("explain_results")
     async def _explain_results(self, state: PSOState) -> dict:
         try:
-            context = f"Resultados de optimización PSO:\n{json.dumps(state.get('result', {}), indent=2)}"
+            context = f"Resultados de optimización PSO:\n{json.dumps(state.get('result') or {}, indent=2)}"
             if state.get("comparison"):
                 context += f"\n\nComparación baseline vs optimizado:\n{json.dumps(state['comparison'], indent=2)}"
 
@@ -135,7 +136,6 @@ class PSOGraph(BaseAgent):
         except Exception as e:
             return {"explanation": f"No se pudo generar explicación: {e}"}
 
-    @trace_node("export_weights")
     async def _export_weights(self, state: PSOState) -> dict:
         if not state.get("result"):
             return {}
@@ -147,13 +147,12 @@ class PSOGraph(BaseAgent):
             "version": r.get("version", "pso-v1"),
             "metrics": state.get("comparison", {}),
         }
-        self.weights_path.write_text(json.dumps(data, indent=2))
+        await asyncio.to_thread(self.weights_path.write_text, json.dumps(data, indent=2))
         logger.info("Pesos exportados a %s", self.weights_path)
         return {}
 
-    @trace_node("format_result")
     async def _format_result(self, state: PSOState) -> dict:
-        result = state.get("result", {})
+        result = state.get("result") or {}
         comparison = state.get("comparison", {})
         baseline = comparison.get("baseline", {})
         optimized = comparison.get("optimized", {})
