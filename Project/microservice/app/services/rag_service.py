@@ -1,13 +1,11 @@
-import hashlib
-import os
 import time
-from functools import lru_cache
 from logging import getLogger
 from pathlib import Path
 from typing import List, Dict
 
+from langchain_core.embeddings import Embeddings
 from sentence_transformers import SentenceTransformer
-from app.core.settings import settings
+from app.core.config import settings
 
 logger = getLogger(__name__)
 
@@ -26,7 +24,7 @@ class RAGService:
         separators=None,
         retrieval_max_length=2000,
     ):
-        self.chroma_path = persist_dir or settings.CHROMA_PATH
+        self.chroma_path = persist_dir or settings.vectorstore_path
         self.persist_dir = Path(self.chroma_path)
         self.docs_dir = Path(docs_dir) if docs_dir else (
             Path(__file__).resolve().parent.parent.parent / "data" / "knowledge_base"
@@ -43,13 +41,27 @@ class RAGService:
         self.initialized = False
         self.chunk_count = 0
         self.doc_count = 0
-        self._init_embedding_model()
+        self._init_embedding_model(embedding)
         self._init_chroma()
 
-    def _init_embedding_model(self):
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        self.model = SentenceTransformer(model_name)
-        logger.info("Embedding model loaded: %s", model_name)
+    def _init_embedding_model(self, embedding=None):
+        if embedding is not None and isinstance(embedding, Embeddings):
+            self.model = embedding
+            logger.info("Embedding model: %s (via provider)", type(embedding).__name__)
+        else:
+            model_name = "sentence-transformers/all-MiniLM-L6-v2"
+            self.model = SentenceTransformer(model_name)
+            logger.info("Embedding model loaded: %s (fallback)", model_name)
+
+    def _embed_texts(self, texts: List[str]) -> List[List[float]]:
+        if isinstance(self.model, Embeddings):
+            return self.model.embed_documents(texts)
+        return self.model.encode(texts).tolist()
+
+    def _embed_query(self, query_text: str) -> List[float]:
+        if isinstance(self.model, Embeddings):
+            return self.model.embed_query(query_text)
+        return self.model.encode([query_text]).tolist()[0]
 
     def _init_chroma(self):
         try:
@@ -101,7 +113,7 @@ class RAGService:
 
         for i, doc in enumerate(documents):
             text = doc["contenido"]
-            emb = self.model.encode([text]).tolist()
+            emb = [self._embed_query(text)]
             meta = {
                 "titulo": doc.get("titulo", ""),
                 "fuente": doc.get("fuente", ""),
@@ -125,7 +137,7 @@ class RAGService:
             return
 
         texts = [doc["contenido"] for doc in documents]
-        embeddings = self.model.encode(texts).tolist()
+        embeddings = self._embed_texts(texts)
 
         ids = [f"doc_{i}" for i in range(len(documents))]
         metadatas = [{
@@ -144,12 +156,11 @@ class RAGService:
         self.chunk_count = self.collection.count()
 
     def query(self, query_text: str, n_results: int = 5) -> List[Dict]:
-        """Query the vector store"""
         if not self.collection:
             return []
 
         start = time.time()
-        query_embedding = self.model.encode([query_text]).tolist()
+        query_embedding = [self._embed_query(query_text)]
 
         results = self.collection.query(
             query_embeddings=query_embedding,

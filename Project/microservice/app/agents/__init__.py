@@ -10,7 +10,9 @@ _DEFAULT_MANIFEST = Path(__file__).parent / "manifest.yaml"
 
 
 def load_agents(services_ref, manifest_path: str | Path | None = None) -> dict[str, "BaseAgent"]:
-    """Carga agents desde manifest.yaml e inyecta dependencias desde services_ref."""
+    """Carga agents desde manifest.yaml e inyecta dependencias desde services_ref.
+    Cada agent se expone como atributo en services_ref inmediatamente para que
+    agents subsiguientes puedan usarlo como dependencia."""
     path = Path(manifest_path) if manifest_path else _DEFAULT_MANIFEST
     if not path.exists():
         logger.warning("Manifest %s no encontrado", path)
@@ -45,7 +47,10 @@ def load_agents(services_ref, manifest_path: str | Path | None = None) -> dict[s
                 logger.warning("Dependencia %s no encontrada en services_ref", dep_name)
 
         try:
-            agents[name] = cls(**deps)
+            agent = cls(**deps)
+            agents[name] = agent
+            attr_name = f"{name}_graph"
+            setattr(services_ref, attr_name, agent)
             logger.info("Agent '%s' cargado desde %s", name, spec["class"])
         except Exception as e:
             logger.error("Error instanciando agent '%s': %s", name, e)

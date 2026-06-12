@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import f1_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, recall_score
 
 
 class MetricsService:
@@ -13,6 +13,7 @@ class MetricsService:
         fn = int(np.sum(high_risk & ~pred_high))
         fp = int(np.sum(~high_risk & pred_high))
         return {
+            "accuracy": float(accuracy_score(y, preds)),
             "recall_high_risk": float(recall_score(y, preds, average="macro", zero_division=0)),
             "false_negative_rate": fn / max(tp + fn, 1),
             "f1_score": float(f1_score(y, preds, average="macro", zero_division=0)),
@@ -25,8 +26,14 @@ class MetricsService:
         improvement = {
             k: round(opt[k] - base[k], 4) for k in base
         }
+        delta = {
+            "accuracy": round(opt["accuracy"] - base["accuracy"], 4),
+            "recall_high_risk": round(opt["recall_high_risk"] - base["recall_high_risk"], 4),
+            "f1": round(opt["f1_score"] - base["f1_score"], 4),
+        }
         return {
             "baseline": base,
             "optimized": opt,
             "improvement": improvement,
+            "delta": delta,
         }

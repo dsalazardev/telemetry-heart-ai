@@ -14,6 +14,23 @@ from app.agents.base import BaseAgent
 
 logger = getLogger(__name__)
 
+# Simple in-memory deduplication cache for webhook events
+_EVENT_CACHE: dict[str, dict] = {}
+_MAX_CACHE_SIZE = 1000
+
+
+def _get_cached_event(event_id: str) -> dict | None:
+    return _EVENT_CACHE.get(event_id)
+
+
+def _cache_event(event_id: str, response: dict) -> None:
+    if len(_EVENT_CACHE) >= _MAX_CACHE_SIZE:
+        keys = list(_EVENT_CACHE.keys())
+        for k in keys[:_MAX_CACHE_SIZE // 2]:
+            del _EVENT_CACHE[k]
+    _EVENT_CACHE[event_id] = response
+
+
 _DEFAULT_N8N_CFG = Path(__file__).parent.parent / "config" / "clinical_params.yaml"
 
 
@@ -134,6 +151,7 @@ class N8NGraph(BaseAgent):
             "smoker": _bool(body.get("smoker") or body.get("fumador")),
             "chest_pain_type": body.get("chest_pain_type") or body.get("dolor_toracico"),
             "previous_condition": _bool(body.get("previous_condition") or body.get("condicion_previa")),
+            "event_id": body.get("event_id") or body.get("telemetry_id") or body.get("id"),
         }
         return {"parsed_data": parsed}
 
@@ -234,6 +252,13 @@ class N8NGraph(BaseAgent):
         return {"n8n_response": n8n_response}
 
     async def run(self, payload: dict | None = None, **kwargs) -> dict:
+        event_id = payload.get("event_id") if payload else None
+        if event_id:
+            cached = _get_cached_event(event_id)
+            if cached is not None:
+                logger.info("Evento %s ya procesado; devolviendo respuesta cacheada", event_id)
+                return {"n8n_response": {**cached, "deduplicated": True}}
+
         initial = N8NState(
             raw_payload=payload,
             parsed_data={},
@@ -244,21 +269,33 @@ class N8NGraph(BaseAgent):
             error=None,
         )
         result = await self.graph.ainvoke(initial)
-        return result.get("n8n_response", {"error": "no_response"})
+        n8n_response = result.get("n8n_response", {"error": "no_response"})
+
+        if event_id:
+            _cache_event(event_id, n8n_response)
+
+        return {"n8n_response": n8n_response}
 
     @property
     def router(self) -> APIRouter:
         router = APIRouter(tags=["n8n"])
 
-        @router.post("/n8n/webhook")
-        async def n8n_webhook(payload: dict, services=Depends(get_services)):
+        async def _handle_payload(payload: dict, services):
             n8n = services.agents.get("n8n")
             if n8n is None:
                 raise HTTPException(status_code=500, detail="n8n agent no disponible")
             try:
                 return await n8n.run(payload=payload)
             except Exception as e:
-                logger.error("Error en n8n webhook: %s", e)
+                logger.error("Error en n8n agent: %s", e)
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @router.post("/n8n/webhook")
+        async def n8n_webhook(payload: dict, services=Depends(get_services)):
+            return await _handle_payload(payload, services)
+
+        @router.post("/evaluar")
+        async def evaluar(payload: dict, services=Depends(get_services)):
+            return await _handle_payload(payload, services)
 
         return router

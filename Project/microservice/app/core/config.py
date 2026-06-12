@@ -5,7 +5,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     service_name: str = "telemetry-heart-ai-microservice"
+    host: str = "0.0.0.0"
     port: int = 8001
+    environment: str = "dev"  # dev | demo | prod | evaluation
+
+    database_url: str = "postgresql+asyncpg://user:pass@localhost:5432/telemetry_heart"
 
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
@@ -34,3 +38,7 @@ class Settings(BaseSettings):
     langsmith_trace_v2: bool = True
 
     clinical_config_path: str = "app/config/clinical_params.yaml"
+    internal_token: str = "dev-token-cambiar-en-prod"
+
+
+settings = Settings()

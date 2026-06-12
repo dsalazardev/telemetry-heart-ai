@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.explanation import ClinicalExplanation
+
 
 class PredictionRequest(BaseModel):
     paciente_id: int | None = None
@@ -28,6 +30,7 @@ class PredictionResponse(BaseModel):
     threshold_exceeded: bool
     dominant_factors: list[str]
     clinical_explanation: str | None = None
+    explanation_structured: ClinicalExplanation | None = None
     recommended_action: str
     rag: dict
     model: dict

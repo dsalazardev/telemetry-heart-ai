@@ -75,6 +75,7 @@ class PSOOptimizer(BaseOptimizer):
             self._fitness_history.append(gbest_fitness)
 
         elapsed = time.time() - start_time
+        elapsed_ms = int(elapsed * 1000)
 
         w_opt = gbest[:n_features].tolist()
         thresholds_opt = gbest[n_features:n_features + 2].tolist()
@@ -88,13 +89,18 @@ class PSOOptimizer(BaseOptimizer):
         fn = int(np.sum(high_risk & ~pred_high))
         recall_val = float(recall_score(y, preds, average="macro", zero_division=0))
         f1_val = float(f1_score(y, preds, average="macro", zero_division=0))
+        accuracy_val = float(np.mean(preds == y))
 
         return OptimizerResult(
             weights=w_opt,
             thresholds=thresholds_opt,
             bias=bias_opt,
             fitness_history=self._fitness_history,
+            convergence_curve=self._fitness_history,
+            best_fitness=round(gbest_fitness, 4),
+            runtime_ms=elapsed_ms,
             metrics={
+                "accuracy": accuracy_val,
                 "recall_high_risk": recall_val,
                 "false_negative_rate": fn / max(tp + fn, 1),
                 "f1_score": f1_val,

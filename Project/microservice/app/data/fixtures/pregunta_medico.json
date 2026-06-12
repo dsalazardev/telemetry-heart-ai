@@ -1,0 +1,8 @@
+{
+  "question": "¿Por qué este paciente tiene riesgo alto?",
+  "prediction_context": {
+    "risk_score": 0.82,
+    "risk_level": "alto",
+    "dominant_factors": ["taquicardia", "hipoxemia", "hipertensión sistólica"]
+  }
+}

@@ -62,17 +62,25 @@ async def test_n8n_graph_structure():
 
 
 @pytest.mark.asyncio
-async def test_agent_query(test_client: AsyncClient):
-    response = await test_client.post("/agent/query", json={
-        "question": "What is the risk for a 60 year old male?"
+async def test_n8n_webhook(test_client: AsyncClient):
+    response = await test_client.post("/n8n/webhook", json={
+        "paciente_id": 1,
+        "heart_rate": 160,
+        "spo2": 82,
+        "systolic_bp": 200,
     })
     assert response.status_code == 200
     data = response.json()
-    assert "response" in data
-    assert "tool_used" in data
+    assert "n8n_response" in data
 
 
 @pytest.mark.asyncio
-async def test_agent_query_empty(test_client: AsyncClient):
-    response = await test_client.post("/agent/query", json={"question": ""})
-    assert response.status_code == 400
+async def test_evaluar_endpoint(test_client: AsyncClient):
+    response = await test_client.post("/evaluar", json={
+        "paciente_id": 1,
+        "frecuenciaCardiaca": 160,
+        "spo2": 82,
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert "n8n_response" in data

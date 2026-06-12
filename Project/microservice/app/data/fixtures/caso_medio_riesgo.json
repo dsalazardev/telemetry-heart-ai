@@ -1,0 +1,15 @@
+{
+  "paciente_id": 2,
+  "heart_rate": 105,
+  "spo2": 94,
+  "systolic_bp": 145,
+  "diastolic_bp": 95,
+  "cholesterol": 220,
+  "glucose": 140,
+  "age": 55,
+  "sex": "M",
+  "chest_pain_type": "atypical_angina",
+  "smoker": true,
+  "previous_condition": false,
+  "explain": true
+}

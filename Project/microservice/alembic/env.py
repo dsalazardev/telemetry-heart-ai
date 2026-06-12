@@ -7,7 +7,7 @@ from sqlmodel import SQLModel
 
 # Import models for metadata
 from app.models import *  # noqa
-from app.core.settings import settings
+from app.core.config import settings
 
 # Alembic Config object
 config = context.config
@@ -18,7 +18,7 @@ if config.config_file_name is not None:
 
 # Override sqlalchemy.url with the actual database URL from .env
 # Use the sync URL (replace +asyncpg with nothing for Alembic sync engine)
-sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_url = settings.database_url.replace("+asyncpg", "")
 config.set_main_option("sqlalchemy.url", sync_url)
 
 # Target metadata

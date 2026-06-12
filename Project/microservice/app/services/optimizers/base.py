@@ -9,6 +9,9 @@ class OptimizerResult(BaseModel):
     thresholds: list[float]
     bias: float = 0.0
     fitness_history: list[float]
+    convergence_curve: list[float] = []
+    best_fitness: float = 0.0
+    runtime_ms: int = 0
     metrics: dict
     n_generations: int
     computation_time: float

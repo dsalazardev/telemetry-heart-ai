@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from langgraph.graph import StateGraph, START, END
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
 from fastapi import APIRouter, Depends
 
 from app.core.langgraph_state import PSOState
@@ -20,11 +20,14 @@ from app.agents.base import BaseAgent
 
 logger = getLogger(__name__)
 
-EXPLAIN_SYSTEM = """
+PSO_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """
 Eres un experto en metaheurísticas aplicadas a riesgo cardiovascular.
 Debes explicar los resultados de optimización PSO en lenguaje claro para un médico o ingeniero.
 Incluye: qué mejoró, qué empeoró, qué significan los pesos, y recomendaciones.
-"""
+"""),
+    ("human", "{context}"),
+])
 
 
 def _load_data(path: str) -> tuple[np.ndarray, np.ndarray]:
@@ -121,11 +124,11 @@ class PSOGraph(BaseAgent):
     @trace_node("explain_results")
     async def _explain_results(self, state: PSOState) -> dict:
         try:
-            prompt = f"Resultados de optimización PSO:\n{json.dumps(state.get('result', {}), indent=2)}"
+            context = f"Resultados de optimización PSO:\n{json.dumps(state.get('result', {}), indent=2)}"
             if state.get("comparison"):
-                prompt += f"\n\nComparación baseline vs optimizado:\n{json.dumps(state['comparison'], indent=2)}"
+                context += f"\n\nComparación baseline vs optimizado:\n{json.dumps(state['comparison'], indent=2)}"
 
-            messages = [SystemMessage(content=EXPLAIN_SYSTEM), HumanMessage(content=prompt)]
+            messages = PSO_PROMPT.format_messages(context=context)
             response = await self.llm.ainvoke(messages)
             explanation = response.content if hasattr(response, "content") else str(response)
             return {"explanation": explanation}
@@ -150,10 +153,25 @@ class PSOGraph(BaseAgent):
 
     @trace_node("format_result")
     async def _format_result(self, state: PSOState) -> dict:
+        result = state.get("result", {})
+        comparison = state.get("comparison", {})
+        baseline = comparison.get("baseline", {})
+        optimized = comparison.get("optimized", {})
+        delta = comparison.get("delta", {})
+
         return {
-            "result": state.get("result"),
-            "comparison": state.get("comparison"),
+            "baseline": baseline,
+            "optimized": optimized,
+            "delta": delta,
+            "runtime_ms": result.get("runtime_ms", 0),
+            "iterations": result.get("n_generations", 0),
+            "best_fitness": result.get("best_fitness", 0.0),
+            "convergence_curve": result.get("convergence_curve", []),
+            "weights": result.get("weights", []),
+            "thresholds": result.get("thresholds", []),
             "explanation": state.get("explanation"),
+            "result": result,
+            "comparison": comparison,
         }
 
     async def run(self, action: str = "explain", n_particles: int = 30, max_iter: int = 100, **kwargs) -> dict:
@@ -168,8 +186,15 @@ class PSOGraph(BaseAgent):
         )
         result = await self.graph.ainvoke(initial)
         return {
-            "result": result.get("result"),
-            "comparison": result.get("comparison"),
+            "baseline": result.get("baseline", {}),
+            "optimized": result.get("optimized", {}),
+            "delta": result.get("delta", {}),
+            "runtime_ms": result.get("runtime_ms", 0),
+            "iterations": result.get("iterations", 0),
+            "best_fitness": result.get("best_fitness", 0.0),
+            "convergence_curve": result.get("convergence_curve", []),
+            "weights": result.get("weights", []),
+            "thresholds": result.get("thresholds", []),
             "explanation": result.get("explanation"),
         }
 
