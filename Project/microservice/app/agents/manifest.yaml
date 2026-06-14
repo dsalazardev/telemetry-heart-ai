@@ -2,12 +2,4 @@ agents:
   clinical:
     class: app.agents.clinical_subgraph.ClinicalGraph
     enabled: true
-    deps: [llm, risk_engine, rag]
-  pso:
-    class: app.agents.pso_subgraph.PSOGraph
-    enabled: true
-    deps: [llm, risk_engine, weights_path]
-  n8n:
-    class: app.agents.n8n_subgraph.N8NGraph
-    enabled: true
-    deps: [risk_engine, clinical_graph]
+    deps: [llm, risk_engine, rag, triage_priority]

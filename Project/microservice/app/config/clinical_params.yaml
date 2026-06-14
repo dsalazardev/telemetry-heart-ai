@@ -6,15 +6,6 @@ dominant_factor:
   weight_threshold: 0.15
   value_gate: 0.3
 
-n8n_thresholds:
-  tachycardia: 130
-  bradycardia: 45
-  spo2_critical: 92
-  systolic_critical: 160
-  diastolic_critical: 100
-  cholesterol_critical: 240
-  glucose_critical: 180
-
 features:
   - name: heart_rate
     min: 30
@@ -77,10 +68,3 @@ chest_pain_types:
   atypical_angina: 2.0
   non_anginal: 3.0
   asymptomatic: 4.0
-
-fallback:
-  critical_flags: 3
-  high_flags: 1
-  critical_score: 0.85
-  high_score: 0.62
-  low_score: 0.25

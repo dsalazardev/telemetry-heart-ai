@@ -34,3 +34,8 @@ class PredictionResponse(BaseModel):
     recommended_action: str
     rag: dict
     model: dict
+
+    priority: Literal["BAJA", "MEDIA", "ALTA", "CRÍTICA"] | None = None
+    priority_score: float | None = None
+    priority_level: int | None = None
+    weights_version: str | None = None

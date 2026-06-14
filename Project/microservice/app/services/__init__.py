@@ -3,10 +3,11 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.langsmith import get_client
-from app.models import create_embeddings, create_llm
+from app.core.resolver import create_embeddings, create_llm
 from app.services.metrics_service import MetricsService
 from app.services.rag_service import RAGService
 from app.services.risk_engine import RiskEngine
+from app.services.triage_priority_service import TriagePriorityService
 from app.agents import load_agents
 
 logger = getLogger(__name__)
@@ -52,10 +53,9 @@ class Services:
         self.llm = llm
         self.weights_path = settings.weights_path
 
-        self.agents = load_agents(self)
+        self.triage_priority = TriagePriorityService(settings.weights_path)
 
-        for name, agent in self.agents.items():
-            setattr(self, name if name.endswith("_graph") else f"{name}_graph", agent)
+        self.agents = load_agents(self)
 
         self.metrics = MetricsService()
 
@@ -89,13 +89,14 @@ class Services:
         logger.info(
             "STARTUP_CONFIG: embedding_provider=%s, embedding_model=%s, "
             "rag_collection=%s, documents_indexed=%d, llm_provider=%s, "
-            "weights_version=%s, environment=%s",
+            "weights_version=%s, priority_loaded=%s, environment=%s",
             self.settings.embedding_provider,
             self.settings.embedding_model,
             "clinical_knowledge",
             getattr(self.rag, "doc_count", 0),
             self.settings.llm_provider,
             getattr(self.risk_engine, "version", "unknown"),
+            self.triage_priority.loaded,
             self.settings.environment,
         )
 

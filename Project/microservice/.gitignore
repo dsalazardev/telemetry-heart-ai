@@ -1,8 +1,10 @@
-data/*.csv
-data/*.pkl
-chroma_db/
-notebooks/.ipynb_checkpoints/
-__pycache__/
+app/vectorstore/
+**/__pycache__/
 *.pyc
-.env
-
+.pytest_cache/
+.langgraph_api/
+server.log
+app.rar
+app.rar
+*.egg-info/
+.coverage

@@ -1,9 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "clinical": "app.studio:clinical_graph",
-    "n8n": "app.studio:n8n_graph",
-    "pso": "app.studio:pso_graph"
+    "clinical": "app.studio:clinical_graph"
   },
   "env": ".env"
 }

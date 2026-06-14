@@ -1,29 +1,19 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from httpx import AsyncClient
 
 from app.agents.clinical_subgraph import ClinicalGraph
-from app.agents.pso_subgraph import PSOGraph
-from app.agents.n8n_subgraph import N8NGraph
 
 
 def test_clinical_graph_imports():
     assert ClinicalGraph is not None
 
 
-def test_pso_graph_imports():
-    assert PSOGraph is not None
-
-
-def test_n8n_graph_imports():
-    assert N8NGraph is not None
-
-
 @pytest.mark.asyncio
 async def test_clinical_graph_structure():
     from app.services.risk_engine import RiskEngine
     from app.services.rag_service import RAGService
+    from app.services.triage_priority_service import TriagePriorityService
 
     llm = MagicMock()
     llm.ainvoke = AsyncMock(return_value=MagicMock(content='{"explanation": "test"}'))
@@ -33,54 +23,62 @@ async def test_clinical_graph_structure():
         persist_dir="/tmp/chroma_test",
         docs_dir="/tmp/docs_test",
     )
-    graph = ClinicalGraph(llm=llm, risk_engine=engine, rag=rag)
+    triage = TriagePriorityService("nonexistent.json")
+    graph = ClinicalGraph(llm=llm, risk_engine=engine, rag=rag, triage_priority=triage)
     assert graph.graph is not None
     assert hasattr(graph, "run")
+    assert graph.triage_priority is triage
+    assert len(graph.tools) >= 1
 
 
 @pytest.mark.asyncio
-async def test_pso_graph_structure():
+async def test_clinical_graph_accepts_dict_request_from_studio():
+    """Reproduce el flujo de LangGraph Studio: state['request'] llega como dict.
+
+    Antes del fix, ``req.model_dump()`` fallaba con
+    ``AttributeError("'dict' object has no attribute 'model_dump'")``.
+    """
     from app.services.risk_engine import RiskEngine
+    from app.services.rag_service import RAGService
+    from app.services.triage_priority_service import TriagePriorityService
 
     llm = MagicMock()
-    llm.ainvoke = AsyncMock(return_value=MagicMock(content="explicacion mock"))
+    llm.ainvoke = AsyncMock(return_value=MagicMock(content='{"explanation": "test"}'))
 
     engine = RiskEngine("nonexistent.json")
-    graph = PSOGraph(llm=llm, risk_engine=engine, weights_path="/tmp/test_weights.json")
-    assert graph.graph is not None
-    assert hasattr(graph, "run")
+    rag = RAGService(persist_dir="/tmp/chroma_test", docs_dir="/tmp/docs_test")
+    triage = TriagePriorityService("nonexistent.json")
+    graph = ClinicalGraph(llm, engine, rag, triage).graph
 
+    initial = {
+        "request": {
+            "paciente_id": 1,
+            "heart_rate": 160,
+            "spo2": 82,
+            "systolic_bp": 200,
+            "diastolic_bp": 120,
+            "cholesterol": 300,
+            "age": 72,
+            "sex": "M",
+            "chest_pain_type": "asymptomatic",
+            "smoker": True,
+            "previous_condition": True,
+            "explain": False,
+        },
+        "features": {},
+        "risk_result": {},
+        "priority_result": None,
+        "rag_sources": None,
+        "clinical_explanation": None,
+        "response": None,
+        "error": None,
+    }
 
-@pytest.mark.asyncio
-async def test_n8n_graph_structure():
-    from app.services.risk_engine import RiskEngine
-
-    engine = RiskEngine("nonexistent.json")
-    graph = N8NGraph(risk_engine=engine)
-    assert graph.graph is not None
-    assert hasattr(graph, "run")
-
-
-@pytest.mark.asyncio
-async def test_n8n_webhook(test_client: AsyncClient):
-    response = await test_client.post("/n8n/webhook", json={
-        "paciente_id": 1,
-        "heart_rate": 160,
-        "spo2": 82,
-        "systolic_bp": 200,
-    })
-    assert response.status_code == 200
-    data = response.json()
-    assert "n8n_response" in data
-
-
-@pytest.mark.asyncio
-async def test_evaluar_endpoint(test_client: AsyncClient):
-    response = await test_client.post("/evaluar", json={
-        "paciente_id": 1,
-        "frecuenciaCardiaca": 160,
-        "spo2": 82,
-    })
-    assert response.status_code == 200
-    data = response.json()
-    assert "n8n_response" in data
+    result = await graph.ainvoke(initial)
+    assert result.get("error") is None, f"grafo devolvió error: {result.get('error')}"
+    assert result["response"] is not None
+    assert result["response"].risk_score > 0.5
+    assert result["response"].risk_level in ("bajo", "medio", "alto")
+    assert result["response"].priority in ("BAJA", "MEDIA", "ALTA", "CRÍTICA")
+    assert result["response"].paciente_id == 1
+    assert result["response"].weights_version == "baseline"

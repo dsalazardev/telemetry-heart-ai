@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_health import router as health_router
 from app.api.routes_ready import router as ready_router
 from app.api.routes_metrics import router as metrics_router
+from app.api.routes_optimize import router as optimize_router
 from app.core.config import Settings
 from app.core.logging import setup_logging
 from app.services import Services
@@ -36,7 +37,6 @@ async def lifespan(app: FastAPI):
     app.state.services = services
     app.state.settings = settings
 
-    # Auto-descubrimiento de routers desde los agents
     for name, agent in services.agents.items():
         agent_router = getattr(agent, "router", None)
         if agent_router is not None:
@@ -59,10 +59,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers no asociados a agents (health, ready, metrics se mantienen)
 app.include_router(health_router, tags=["health"])
 app.include_router(ready_router, tags=["health"])
 app.include_router(metrics_router, tags=["metrics"])
+app.include_router(optimize_router, tags=["optimize"])
 
 
 @app.get("/")

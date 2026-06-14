@@ -6,20 +6,25 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 
 from app.core.langgraph_state import ClinicalState
-from app.core.dependencies import get_services
+from app.core.dependencies import get_services, verify_internal_token
 from app.schemas.explanation import ClinicalExplanation, ExplainRequest, ExplainResponse
 from app.schemas.prediction import PredictionRequest, PredictionResponse
 from app.services.risk_engine import RiskEngine
 from app.services.rag_service import RAGService
-from fastapi import APIRouter, Depends
+from app.services.triage_priority_service import (
+    TriagePriorityService,
+    build_feature_bundle,
+    FeatureBundle,
+)
+from app.tools import ALL_TOOLS
 from app.agents.base import BaseAgent
-from pydantic import ValidationError
 
 logger = getLogger(__name__)
 
-PROMPT_VERSION = "clinical_prompt_v2"
+PROMPT_VERSION = "clinical_prompt_v3"
 MIN_RAG_SCORE = 0.65
 
 CLINICAL_PROMPT = ChatPromptTemplate.from_messages([
@@ -31,8 +36,10 @@ Responde únicamente en JSON válido con las claves exactas solicitadas.
     ("human", """
 Riesgo calculado:
 - score: {risk_score}
-- nivel: {risk_level}
-- factores dominantes: {dominant_factors}
+- nivel (3-niveles baseline): {risk_level}
+- prioridad (4-niveles PSO): {priority_label} (score={priority_score})
+
+Factores dominantes: {dominant_factors}
 
 Evidencia RAG:
 {rag_sources}
@@ -85,25 +92,54 @@ def _build_rag_info(rag_sources: list | None, max_sources: int = 4):
     }
 
 
+def _coerce_request(req) -> PredictionRequest:
+    """Normaliza ``state['request']`` a ``PredictionRequest``.
+
+    LangGraph Studio envía el state como JSON, por lo que ``request`` llega
+    como ``dict`` puro. Los tests en Python y el método ``run()`` lo
+    entregan ya como ``PredictionRequest``. Este helper acepta ambos y
+    devuelve siempre el modelo Pydantic.
+    """
+    if isinstance(req, PredictionRequest):
+        return req
+    if isinstance(req, dict):
+        return PredictionRequest.model_validate(req)
+    raise TypeError(
+        f"state['request'] debe ser dict o PredictionRequest, "
+        f"recibió {type(req).__name__}"
+    )
+
+
 class ClinicalGraph(BaseAgent):
     name = "clinical"
-    def __init__(self, llm: BaseChatModel, risk_engine: RiskEngine, rag: RAGService):
+
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        risk_engine: RiskEngine,
+        rag: RAGService,
+        triage_priority: TriagePriorityService,
+    ):
         self.llm = llm
         self.risk_engine = risk_engine
         self.rag = rag
+        self.triage_priority = triage_priority
+        self.tools = list(ALL_TOOLS)
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
         builder = StateGraph(ClinicalState)
 
         builder.add_node("normalize_and_predict", self._normalize_and_predict)
+        builder.add_node("prioritize", self._prioritize)
         builder.add_node("retrieve_rag", self._retrieve_rag)
         builder.add_node("explain", self._explain)
         builder.add_node("format_response", self._format_response)
 
         builder.add_edge(START, "normalize_and_predict")
+        builder.add_edge("normalize_and_predict", "prioritize")
         builder.add_conditional_edges(
-            "normalize_and_predict",
+            "prioritize",
             self._should_explain,
             {True: "retrieve_rag", False: "format_response"},
         )
@@ -114,15 +150,40 @@ class ClinicalGraph(BaseAgent):
         return builder.compile()
 
     def _should_explain(self, state: ClinicalState) -> bool:
-        return bool(state["request"] and state["request"].explain)
+        if not state["request"]:
+            return False
+        try:
+            req = _coerce_request(state["request"])
+        except (TypeError, ValidationError):
+            return False
+        return bool(req.explain)
 
     async def _normalize_and_predict(self, state: ClinicalState) -> dict:
-        req = state["request"]
-        if req is None:
+        req_raw = state["request"]
+        if req_raw is None:
             return {"error": "request is None"}
+        try:
+            req = _coerce_request(req_raw)
+        except (TypeError, ValidationError) as e:
+            return {"error": f"invalid request payload: {e}"}
         data = req.model_dump(exclude={"paciente_id", "evento_id", "explain"})
         risk = self.risk_engine.predict(data)
         return {"features": data, "risk_result": risk}
+
+    async def _prioritize(self, state: ClinicalState) -> dict:
+        data = state["features"]
+        bundle = build_feature_bundle(
+            heart_rate=data.get("heart_rate"),
+            spo2=data.get("spo2"),
+            systolic_bp=data.get("systolic_bp"),
+            cholesterol=data.get("cholesterol"),
+            chest_pain=data.get("chest_pain"),
+            age=data.get("age"),
+            smoker=data.get("smoker"),
+            previous_condition=data.get("previous_condition"),
+        )
+        priority = self.triage_priority.classify(bundle)
+        return {"priority_result": priority}
 
     async def _retrieve_rag(self, state: ClinicalState) -> dict:
         dominant = state["risk_result"].get("dominant_factors", [])
@@ -133,9 +194,9 @@ class ClinicalGraph(BaseAgent):
 
     async def _explain(self, state: ClinicalState) -> dict:
         risk = state["risk_result"]
+        priority = state.get("priority_result")
         k = getattr(self.rag, "retrieval_k", 4)
 
-        # Filtro de evidencia por score mínimo
         raw_sources = state.get("rag_sources") or []
         valid_sources = [s for s in raw_sources if s.get("score", 0) >= MIN_RAG_SCORE]
 
@@ -154,13 +215,15 @@ class ClinicalGraph(BaseAgent):
         rag_info = _build_rag_info(valid_sources, max_sources=k)
 
         try:
-            messages = CLINICAL_PROMPT.format_messages(
-                risk_score=risk.get("risk_score", 0.0),
-                risk_level=risk.get("risk_level", "bajo"),
-                dominant_factors=", ".join(risk.get("dominant_factors", [])),
-                rag_sources=json.dumps(rag_info["sources"], ensure_ascii=False),
-            )
-            response = await self.llm.ainvoke(messages)
+            chain = CLINICAL_PROMPT | self.llm
+            response = await chain.ainvoke({
+                "risk_score": risk.get("risk_score", 0.0),
+                "risk_level": risk.get("risk_level", "bajo"),
+                "priority_label": priority.priority_label if priority else "N/D",
+                "priority_score": priority.score if priority else 0.0,
+                "dominant_factors": ", ".join(risk.get("dominant_factors", [])),
+                "rag_sources": json.dumps(rag_info["sources"], ensure_ascii=False),
+            })
             output = response.content if hasattr(response, "content") else str(response)
             try:
                 parsed = ClinicalExplanation.model_validate_json(output)
@@ -184,8 +247,9 @@ class ClinicalGraph(BaseAgent):
             }
 
     async def _format_response(self, state: ClinicalState) -> dict:
-        req = state["request"]
+        req = _coerce_request(state["request"]) if state["request"] else None
         risk = state["risk_result"]
+        priority = state.get("priority_result")
         rag_info = _build_rag_info(state["rag_sources"]) if state["rag_sources"] else {"used": False, "sources": []}
 
         structured = state.get("clinical_explanation_structured")
@@ -215,6 +279,10 @@ class ClinicalGraph(BaseAgent):
                 "rag_collection_version": "guidelines_v1",
                 "inference_time_ms": 0,
             },
+            priority=priority.priority_label if priority else None,
+            priority_score=priority.score if priority else None,
+            priority_level=priority.priority_level if priority else None,
+            weights_version=priority.weights_version if priority else None,
         )
         return {"response": response}
 
@@ -225,6 +293,7 @@ class ClinicalGraph(BaseAgent):
             request=request,
             features={},
             risk_result={},
+            priority_result=None,
             rag_sources=None,
             clinical_explanation=None,
             response=None,
@@ -239,7 +308,7 @@ class ClinicalGraph(BaseAgent):
     def router(self) -> APIRouter:
         router = APIRouter(tags=["prediction"])
 
-        @router.post("/predecir", response_model=PredictionResponse)
+        @router.post("/predecir", response_model=PredictionResponse, dependencies=[Depends(verify_internal_token)])
         async def predecir(req: PredictionRequest, services=Depends(get_services)):
             clinical = services.agents.get("clinical")
             if clinical is None:
@@ -263,18 +332,18 @@ class ClinicalGraph(BaseAgent):
                     model={"technique": "error", "weights_version": "unknown", "prompt_version": PROMPT_VERSION, "inference_time_ms": 0},
                 )
 
-        @router.post("/explicar", response_model=ExplainResponse)
+        @router.post("/explicar", response_model=ExplainResponse, dependencies=[Depends(verify_internal_token)])
         async def explicar(req: ExplainRequest, services=Depends(get_services)):
             llm = getattr(getattr(services, "clinical_graph", None), "llm", None)
             if llm is None:
                 return ExplainResponse(answer="LLM no disponible", sources=[])
             context_str = str(req.prediction_context) if req.prediction_context else "sin contexto"
-            messages = MEDICO_EXPLAIN_PROMPT.format_messages(
-                context=context_str,
-                question=req.question,
-            )
             try:
-                response = await llm.ainvoke(messages)
+                chain = MEDICO_EXPLAIN_PROMPT | llm
+                response = await chain.ainvoke({
+                    "context": context_str,
+                    "question": req.question,
+                })
                 answer = response.content if hasattr(response, "content") else str(response)
             except Exception as e:
                 logger.error("Error en /explicar: %s", e)

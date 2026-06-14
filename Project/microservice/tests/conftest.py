@@ -1,16 +1,8 @@
 import os
-import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from unittest.mock import MagicMock, AsyncMock
-
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-TestingSessionLocal = sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+from unittest.mock import MagicMock
 
 
 @pytest.fixture(scope="session")
@@ -30,28 +22,9 @@ def setup_env():
     yield
 
 
-@pytest.fixture(scope="session")
-async def setup_db():
-    from app.models.lectura import Lectura
-    from app.models.prediccion import Prediccion
-    from app.models.adapter import Adapter
-
-    async with test_engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: Lectura.metadata.create_all(
-            sync_conn, tables=[Lectura.__table__, Prediccion.__table__, Adapter.__table__]
-        ))
-    yield
-
-
-@pytest.fixture
-async def async_session():
-    async with TestingSessionLocal() as session:
-        yield session
-
-
 @pytest.fixture
 async def test_client():
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import patch
     from fastapi import APIRouter
 
     mock_llm = MagicMock()
@@ -65,7 +38,11 @@ async def test_client():
     mock_rag.initialize = MagicMock()
 
     from app.services.risk_engine import RiskEngine
+    from app.services.triage_priority_service import TriagePriorityService
+    from app.schemas.prediction import PredictionResponse
+
     mock_engine = RiskEngine(str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json"))
+    mock_triage = TriagePriorityService(str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json"))
 
     mock_settings = MagicMock()
     mock_settings.internal_token = "test-token"
@@ -82,39 +59,28 @@ async def test_client():
     mock_services.rag = mock_rag
     mock_services.llm = mock_llm
     mock_services.metrics = MagicMock()
-
-    async def mock_n8n_run(payload: dict = None, **kwargs):
-        return {"n8n_response": {"riesgo": "BAJO", "score": 0.25}}
+    mock_services.triage_priority = mock_triage
 
     async def mock_clinical_run(request=None, **kwargs):
-        return {
-            "risk_score": 0.25,
-            "risk_level": "bajo",
-            "threshold_exceeded": False,
-            "dominant_factors": ["test"],
-            "clinical_explanation": "test explanation",
-            "recommended_action": "Monitoreo continuo",
-            "rag": {"used": False, "sources": []},
-            "model": {"technique": "test", "weights_version": "v1", "prompt_version": "v1", "inference_time_ms": 0},
-        }
-
-    n8n_router = APIRouter()
-    @n8n_router.post("/n8n/webhook")
-    async def _n8n_webhook(payload: dict):
-        return await mock_n8n_run(payload=payload)
-
-    @n8n_router.post("/evaluar")
-    async def _evaluar(payload: dict):
-        return await mock_n8n_run(payload=payload)
+        return PredictionResponse(
+            risk_score=0.25,
+            risk_level="bajo",
+            threshold_exceeded=False,
+            dominant_factors=["test"],
+            clinical_explanation="test explanation",
+            recommended_action="Monitoreo continuo",
+            rag={"used": False, "sources": []},
+            model={"technique": "test", "weights_version": "v1", "prompt_version": "v1", "inference_time_ms": 0},
+            priority="BAJA",
+            priority_score=0.21,
+            priority_level=0,
+            weights_version="baseline",
+        )
 
     clinical_router = APIRouter()
     @clinical_router.post("/predecir")
     async def _predecir(request: dict):
         return await mock_clinical_run()
-
-    mock_n8n_agent = MagicMock()
-    mock_n8n_agent.run = mock_n8n_run
-    mock_n8n_agent.router = n8n_router
 
     mock_clinical_agent = MagicMock()
     mock_clinical_agent.run = mock_clinical_run
@@ -122,8 +88,6 @@ async def test_client():
 
     mock_services.agents = {
         "clinical": mock_clinical_agent,
-        "n8n": mock_n8n_agent,
-        "pso": MagicMock(router=None),
     }
 
     with patch("app.services.Services.__init__", return_value=None), \

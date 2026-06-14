@@ -14,8 +14,8 @@ def test_manifest_valid_yaml():
         manifest = yaml.safe_load(f)
     assert "agents" in manifest
     assert "clinical" in manifest["agents"]
-    assert "pso" in manifest["agents"]
-    assert "n8n" in manifest["agents"]
+    assert "n8n" not in manifest["agents"]
+    assert "pso" not in manifest["agents"]
 
 
 def test_clinical_params_exists():
@@ -29,5 +29,5 @@ def test_clinical_params_valid():
         cfg = yaml.safe_load(f)
     assert "features" in cfg
     assert "risk_thresholds" in cfg
-    assert "n8n_thresholds" in cfg
+    assert "n8n_thresholds" not in cfg
     assert len(cfg["features"]) >= 7

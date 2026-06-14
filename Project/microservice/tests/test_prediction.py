@@ -1,10 +1,13 @@
 import pytest
+from pathlib import Path
 from app.services.risk_engine import RiskEngine
+
+_WEIGHTS_PATH = Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json"
 
 
 @pytest.fixture
 def engine():
-    return RiskEngine("app/data/optimized_weights.json")
+    return RiskEngine(str(_WEIGHTS_PATH))
 
 
 PACIENTE_SANO = {

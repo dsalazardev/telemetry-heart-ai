@@ -1,7 +1,6 @@
 from logging import getLogger
 
-from langchain_community.embeddings import FakeEmbeddings
-from langchain_core.embeddings import Embeddings
+from langchain_core.embeddings import DeterministicFakeEmbedding, Embeddings
 
 from app.core.registry import register
 
@@ -15,4 +14,4 @@ class FakeEmbeddingsProvider:
         logger.info("Fake embeddings provider: size=%d (modo demo)", size)
 
     def get(self) -> Embeddings:
-        return FakeEmbeddings(size=self.size)
+        return DeterministicFakeEmbedding(size=self.size)
