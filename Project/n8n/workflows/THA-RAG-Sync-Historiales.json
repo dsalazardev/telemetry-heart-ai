@@ -1,0 +1,259 @@
+{
+  "updatedAt": "2026-06-13T00:00:00.000Z",
+  "createdAt": "2026-06-13T00:00:00.000Z",
+  "id": "tha-rag-sync-historiales",
+  "name": "THA - RAG Sync Historiales",
+  "description": "Sincroniza historiales clinicos al RAG del microservicio cada 6 horas",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Schedule 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        256,
+        304
+      ],
+      "id": "schedule-6h-01"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT h.id, h.fechaDiagnostico, h.nivelSeveridad, h.tratamientoActual, p.nombre as patologia_nombre, p.categoria as patologia_categoria, h.paciente_id FROM historiales h JOIN patologias p ON h.patologia_id = p.id ORDER BY h.fechaDiagnostico DESC LIMIT 200",
+        "options": {}
+      },
+      "name": "Fetch Historiales",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ],
+      "id": "fetch-historiales-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-not-empty",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Hay Historiales",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        672,
+        304
+      ],
+      "id": "hay-historiales-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $json;\nif (!Array.isArray(rows) || rows.length === 0) return [];\n\nreturn rows.map(h => {\n  const fecha = h.fechadiagnostico ? new Date(h.fechadiagnostico).toISOString().slice(0, 10) : 'sin_fecha';\n  const patologia = h.patologia_nombre || 'sin_nombre';\n  const severidad = h.nivelseveridad || 'sin_clasificar';\n  const tratamiento = h.tratamientofactual || 'sin_tratamiento';\n  const pacienteAnonimo = `P-${String(h.paciente_id).padStart(4, '0')}`;\n\n  const contenido = [\n    `## Historial Clinico Anonimizado`,\n    ``,\n    `**Patologia:** ${patologia}`,\n    `**Categoria:** ${h.patologia_categoria || 'general'}`,\n    `**Severidad:** ${severidad}`,\n    `**Fecha diagnostico:** ${fecha}`,\n    `**Tratamiento actual:** ${tratamiento}`,\n    ``,\n    `Paciente anonimo: ${pacienteAnonimo}.`,\n    `Factor de riesgo cardiaco: ${h.patologia_categoria === 'cardiovascular' ? 'si' : 'evaluar'}.`\n  ].join('\\n');\n\n  return {\n    json: {\n      titulo: `Historial ${pacienteAnonimo} - ${patologia}`,\n      contenido: contenido,\n      fuente: 'historial_clinico_bd',\n      categoria: 'historial_clinico',\n      metadata_extra: {\n        paciente_anonimo: pacienteAnonimo,\n        fecha: fecha,\n        severidad: severidad,\n        patologia: patologia,\n        historial_id: h.id\n      }\n    }\n  };\n});"
+      },
+      "name": "Formatear a Documento",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        880,
+        304
+      ],
+      "id": "formatear-doc-01"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MICROSERVICE_URL }}/rag/documents",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "titulo",
+              "value": "={{ $json.titulo }}"
+            },
+            {
+              "name": "contenido",
+              "value": "={{ $json.contenido }}"
+            },
+            {
+              "name": "fuente",
+              "value": "={{ $json.fuente }}"
+            },
+            {
+              "name": "categoria",
+              "value": "={{ $json.categoria }}"
+            },
+            {
+              "name": "metadata_extra",
+              "value": "={{ $json.metadata_extra.toJsonString() }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.MICROSERVICE_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "name": "POST RAG Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        304
+      ],
+      "id": "post-rag-doc-01"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_rag_sync_ok', concat('Sincronizados ', {{ $json.metadata_extra.historial_id }}, ' historiales al RAG'), true, NOW())",
+        "options": {}
+      },
+      "name": "Log Sync OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        304
+      ],
+      "id": "log-sync-ok-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_rag_sync_empty', 'No hay historiales para sincronizar', true, NOW())",
+        "options": {}
+      },
+      "name": "Log Empty",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        880,
+        480
+      ],
+      "id": "log-empty-01",
+      "credentials": {
+        "postgres": {
+          "id": "q7Lse8miAPXZ0IHU",
+          "name": "PostgreSQL Aiven"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule 6h": {
+      "main": [
+        [
+          {
+            "node": "Fetch Historiales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Historiales": {
+      "main": [
+        [
+          {
+            "node": "Hay Historiales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Historiales": {
+      "main": [
+        [
+          {
+            "node": "Formatear a Documento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear a Documento": {
+      "main": [
+        [
+          {
+            "node": "POST RAG Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST RAG Document": {
+      "main": [
+        [
+          {
+            "node": "Log Sync OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["rag", "sync", "historiales"]
+}
