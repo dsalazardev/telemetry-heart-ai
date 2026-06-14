@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import create_db_and_tables
-from app.routers import auth, pacientes, medicos, triajes, alertas, telemetria, eventos, patologias, dispositivos
+from app.routers import auth, pacientes, medicos, triajes, alertas, telemetria, eventos, patologias, dispositivos, admin
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(telemetria.router, prefix="/telemetria", tags=["telemetria"])
 app.include_router(eventos.router, prefix="/eventos", tags=["eventos"])
 app.include_router(patologias.router, prefix="/patologias", tags=["patologias"])
 app.include_router(dispositivos.router, prefix="/dispositivos", tags=["dispositivos"])
+app.include_router(admin.router, tags=["admin"])
 
 
 @app.get("/")
