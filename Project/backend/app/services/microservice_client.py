@@ -10,7 +10,14 @@ from app.schemas.alerta import AlertaCreate
 class MicroserviceClient:
     def __init__(self):
         self.base_url = settings.MICROSERVICE_URL
-        self.client = httpx.AsyncClient(base_url=self.base_url, timeout=10.0)
+        self._headers = {
+            "Authorization": f"Bearer {settings.INTERNAL_TOKEN}",
+        }
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=30.0,
+            headers=self._headers,
+        )
 
     async def solicitar_prediccion(self, datos_lectura: dict) -> dict:
         """
@@ -26,9 +33,17 @@ class MicroserviceClient:
         except httpx.TimeoutException:
             return {"error": "timeout", "status": "timeout_microservicio"}
         except httpx.HTTPStatusError as e:
-            return {"error": "http_error", "status_code": e.response.status_code}
-        except Exception:
-            return {"error": "connection_error", "status": "microservicio_no_disponible"}
+            return {
+                "error": "http_error",
+                "status_code": e.response.status_code,
+                "detail": e.response.text,
+            }
+        except Exception as e:
+            return {
+                "error": "connection_error",
+                "status": "microservicio_no_disponible",
+                "detail": str(e),
+            }
 
     async def solicitar_prediccion_typed(self, datos_lectura: dict) -> PrediccionResponse | dict:
         """

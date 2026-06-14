@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     DEVICE_TOKEN_EXPIRE_DAYS: int = 30
 
+    INTERNAL_TOKEN: str = "dev-token-cambiar-en-prod"
+
     class Config:
         env_file = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
         extra = "ignore"
