@@ -36,7 +36,7 @@
 - [`/backend`](./backend/AGENTS.md) — API central y persistencia relacional.
 - [`/microservice`](./microservice/AGENTS.md) — FastAPI + LangChain + Metaheurísticas. Predicción de riesgo cardiovascular (RandomForest), agente conversacional (RAG), y optimización (DEAP AG + PSO manual).
 - [`/n8n`](./n8n/AGENTS.md) — Motor de orquestación de flujos de trabajo.
-- [`/wearos`](./wearos/AGENTS.md) — Adquisición de telemetría IoT.
+- [`/wearos`](./wearos/AGENTS.md) — Adquisición de telemetría IoT. **Estado: SKELETON.** Kotlin 2.2.10, Jetpack Compose para Wear, compileSdk 36. Sin sensores, sin HTTP, sin foreground service. 4 archivos .kt (~238 líneas, 100% placeholder). Contrato backend definido: POST /dispositivos + POST /telemetria + JWT.
 
 ## Diagrama Arquitectónico de Referencia
 - [Diagrama UML del Sistema](../Documents/Diagrama%20UML.md) — Vista general de la arquitectura, componentes y relaciones del sistema. **Consulta obligatoria antes de cualquier modificación estructural.**

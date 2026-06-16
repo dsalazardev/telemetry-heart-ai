@@ -1,0 +1,329 @@
+{
+  "name": "THA - Schedule Pendientes",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        16
+      ],
+      "id": "60d0147a-4eb5-4111-9326-dad135785584"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    t.id, \n    t.paciente_id, \n    t.\"probabilidadRiesgo\", \n    t.\"nivelUrgencia\", \n    t.\"fechaEmision\", \n    u.nombres as paciente_nombre, \n    u.apellidos as paciente_apellido, \n    u.telefono, \n    m.\"telegramChatId\" \nFROM triajes t \nJOIN pacientes p ON t.paciente_id = p.id \nJOIN usuarios u ON p.id = u.id  -- ¡Este es el JOIN que te faltaba!\nJOIN medicos m ON t.medico_id = m.id \nWHERE t.atendida = false \n  AND t.\"telegramEnviado\" = false \nORDER BY \n    CASE t.\"nivelUrgencia\" \n        WHEN 'Emergencia' THEN 1 \n        WHEN 'Urgente' THEN 2 \n        WHEN 'Alta' THEN 3 \n        WHEN 'Media' THEN 4 \n        ELSE 5 \n    END, \n    t.\"fechaEmision\" \nLIMIT 10",
+        "options": {}
+      },
+      "name": "Triajes Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        16
+      ],
+      "id": "50c3ef4f-2fc5-41a5-ab0e-1449ed6a577d",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-empty",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Hay Pendientes IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        16
+      ],
+      "id": "1524175a-b5a1-4db1-a0cc-0fb91a2b888a"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Hay Pendientes IF').item.json.telegramChatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Notificar Medico",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        368,
+        32
+      ],
+      "id": "75d1e28a-5fe0-4533-882f-a91a666522d6",
+      "webhookId": "623ee1e2-6d1e-4cc9-8bdd-369d8d96bd3c",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE triajes \nSET \"telegramEnviado\" = true \nWHERE id IN ({{ $('Code in JavaScript').item.json.triajeIds.join(',') }})",
+        "options": {}
+      },
+      "name": "UPDATE telegramEnviado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        576,
+        48
+      ],
+      "id": "be4f0ff0-6c54-4e1e-b30d-fcd237175629",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, \"tipoEvento\", detalle, exitoso, timestamp) VALUES ({{ $('Code in JavaScript').item.json.triajeIds[0] }}, 'n8n_schedule_ok', 'Triaje notificado por schedule', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        768,
+        48
+      ],
+      "id": "459eb19f-4f5c-40d7-a0e8-ee35a8fb332c",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, \"tipoEvento\", detalle, exitoso, timestamp) \nVALUES (NULL, 'n8n_schedule_empty', '0 triajes pendientes', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Empty",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        224
+      ],
+      "id": "cfa287f2-dabd-4eee-a38c-5d2927eaa8bb",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const triajeIds = [];\nlet resumenPacientes = \"Lista de pacientes críticos pendientes:\\n\\n\";\n\n// Iterar sobre los resultados de la base de datos\nfor (const item of $input.all()) {\n  triajeIds.push(item.json.id);\n  resumenPacientes += `- Paciente: ${item.json.paciente_nombre} ${item.json.paciente_apellido}\\n`;\n  resumenPacientes += `  Urgencia: ${item.json.nivelurgencia} | Riesgo: ${item.json.probabilidadriesgo}%\\n`;\n  resumenPacientes += `  Teléfono: ${item.json.telefono}\\n\\n`;\n}\n\n// Retornamos un solo ítem con los IDs y el texto para la IA\nreturn {\n  triajeIds: triajeIds,\n  textoParaIA: resumenPacientes\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        -32
+      ],
+      "id": "888543c1-7ca0-4294-b9d6-2306c6b01a1d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres un asistente médico de urgencias. Tienes la siguiente lista de pacientes críticos pendientes de triaje:\n\n{{ $json.textoParaIA }}\n\nRedacta un mensaje de alerta de emergencia estructurado y empático en formato Markdown para enviarlo al Telegram del médico de guardia. Sé conciso, resalta los niveles de urgencia y no inventes datos.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        64,
+        -128
+      ],
+      "id": "7ad45da7-dfcd-4f41-b451-b239fa26bc00",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        64,
+        48
+      ],
+      "id": "027eec2b-b400-4358-a361-7c1e528d266b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Q5WgsHpcuBlkIB3Y",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Triajes Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Triajes Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Hay Pendientes IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hay Pendientes IF": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Empty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Medico": {
+      "main": [
+        [
+          {
+            "node": "UPDATE telegramEnviado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE telegramEnviado": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Notificar Medico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c73b6027-4881-4e0f-9865-f7b6f9fd7eb7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ea6f41d3543e6d3f024a1cc9cb3052ef09678f722a4189d44625bb68c4fa540c"
+  },
+  "nodeGroups": [],
+  "id": "Zlinm3cwMtPk7NJq",
+  "tags": []
+}
