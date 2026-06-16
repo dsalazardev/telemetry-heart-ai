@@ -44,7 +44,7 @@ def _build_graph() -> ClinicalGraph:
         retrieval_max_length=settings.retrieval_max_length,
     )
     rag.initialize()
-    triage_priority = TriagePriorityService(settings.weights_path)
+    triage_priority = TriagePriorityService(settings.triage_weights_path)
     return ClinicalGraph(llm, risk_engine, rag, triage_priority)
 
 

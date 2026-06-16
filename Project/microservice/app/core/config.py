@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     vectorstore_path: str = "app/vectorstore/chroma"
     clinical_docs_path: str = "app/data/clinical_docs"
     weights_path: str = "app/data/optimized_weights.json"
+    triage_weights_path: str = "app/data/triage_priority_weights.json"
 
     chunk_size: int = 800
     chunk_overlap: int = 120

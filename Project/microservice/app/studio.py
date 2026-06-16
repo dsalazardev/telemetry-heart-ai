@@ -29,7 +29,7 @@ _rag = RAGService(
     retrieval_k=settings.retrieval_k,
     retrieval_max_length=settings.retrieval_max_length,
 )
-_triage_priority = TriagePriorityService(settings.weights_path)
+_triage_priority = TriagePriorityService(settings.triage_weights_path)
 
 _clinical = ClinicalGraph(_llm, _risk_engine, _rag, _triage_priority)
 

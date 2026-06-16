@@ -25,7 +25,7 @@ def _empty_row() -> MetricsRow:
 
 @router.get("/metrics/evaluation", response_model=MetricsComparison)
 async def metrics_evaluation(request: Request):
-    weights_path = request.app.state.settings.weights_path
+    weights_path = request.app.state.settings.triage_weights_path
     metrics_path = Path(weights_path)
     if metrics_path.exists():
         try:
@@ -46,7 +46,7 @@ async def metrics_evaluation(request: Request):
 
 @router.get("/metrics/convergence")
 async def metrics_convergence(request: Request):
-    weights_path = Path(request.app.state.settings.weights_path)
+    weights_path = Path(request.app.state.settings.triage_weights_path)
     curve_path = weights_path.parent / "convergence_curve.json"
     if not curve_path.exists():
         return {"convergence_curve": [], "version": "unknown", "n_iterations": 0}

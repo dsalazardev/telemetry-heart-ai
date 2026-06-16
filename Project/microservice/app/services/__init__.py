@@ -53,7 +53,7 @@ class Services:
         self.llm = llm
         self.weights_path = settings.weights_path
 
-        self.triage_priority = TriagePriorityService(settings.weights_path)
+        self.triage_priority = TriagePriorityService(settings.triage_weights_path)
 
         self.agents = load_agents(self)
 
@@ -116,4 +116,9 @@ class Services:
             errors.append("RAG no cargado (sin documentos indexados)")
         if not self.weights_loaded:
             errors.append("Pesos optimizados no encontrados (usando baseline)")
+        if not self.triage_priority.loaded:
+            logger.warning(
+                "TriagePriorityService en baseline (sin pesos PSO en %s)",
+                self.settings.triage_weights_path,
+            )
         return len(errors) == 0, errors
