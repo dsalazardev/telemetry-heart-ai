@@ -13,7 +13,7 @@ class OptimizeUploadRequest(BaseModel):
     """
 
     weights: list[float] = Field(..., min_length=7, max_length=7)
-    thresholds: list[float] = Field(..., min_length=3, max_length=3)
+    thresholds: list[float] = Field(..., min_length=2, max_length=2)
     version: str = Field(..., min_length=1, max_length=64)
     algorithm: Literal["PSO"] = "PSO"
     feature_weights_dict: dict[str, float] = Field(default_factory=dict)
@@ -23,8 +23,8 @@ class OptimizeUploadRequest(BaseModel):
     @field_validator("thresholds")
     @classmethod
     def _thresholds_ascending(cls, v: list[float]) -> list[float]:
-        if not (v[0] < v[1] < v[2]):
-            raise ValueError("thresholds debe estar estrictamente ascendente (t_medium < t_high < t_critical)")
+        if not (v[0] < v[1]):
+            raise ValueError("thresholds debe estar estrictamente ascendente (t_medium < t_high)")
         if not all(0.0 <= t <= 1.0 for t in v):
             raise ValueError("thresholds fuera de [0, 1]")
         return v

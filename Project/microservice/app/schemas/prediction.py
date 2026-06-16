@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.explanation import ClinicalExplanation
 
@@ -21,6 +21,21 @@ class PredictionRequest(BaseModel):
     previous_condition: bool | None = None
     explain: bool = True
 
+    @model_validator(mode="after")
+    def _check_blood_pressure(self) -> "PredictionRequest":
+        """Valida coherencia entre presiones: sistólica > diastólica.
+
+        Los rangos por campo (`ge`/`le`) no detectan combinaciones
+        fisiológicamente imposibles como systolic=80, diastolic=120.
+        """
+        if self.systolic_bp is not None and self.diastolic_bp is not None:
+            if self.systolic_bp <= self.diastolic_bp:
+                raise ValueError(
+                    f"systolic_bp ({self.systolic_bp}) debe ser mayor que "
+                    f"diastolic_bp ({self.diastolic_bp})"
+                )
+        return self
+
 
 class PredictionResponse(BaseModel):
     paciente_id: int | None = None
@@ -35,7 +50,7 @@ class PredictionResponse(BaseModel):
     rag: dict
     model: dict
 
-    priority: Literal["BAJA", "MEDIA", "ALTA", "CRÍTICA"] | None = None
+    priority: Literal["BAJA", "MEDIA", "ALTA"] | None = None
     priority_score: float | None = None
     priority_level: int | None = None
     weights_version: str | None = None

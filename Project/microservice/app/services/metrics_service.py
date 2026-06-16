@@ -1,7 +1,9 @@
-"""Métricas para evaluación de priorización clínica (4 niveles).
+"""Métricas para evaluación de priorización clínica (3 niveles: BAJA/MEDIA/ALTA).
 
 Calcula accuracy, recall macro, F1, critical_recall, overtriage_rate,
 ordinal_error y la fitness de PSO (mismo cálculo que el optimizador).
+``critical_recall``/``overtriage_rate`` se mantienen por compatibilidad de API,
+pero ahora refieren a la clase tope ALTA (nivel 2).
 """
 from __future__ import annotations
 
@@ -13,21 +15,24 @@ def _fitness(ordinal_error: float, critical_fn_rate: float, overtriage_rate: flo
     return ordinal_error + 3.0 * critical_fn_rate + 0.5 * overtriage_rate
 
 
+TOP_LEVEL = 2  # ALTA: clase de máxima prioridad (3 niveles)
+
+
 def _priority_metrics(y: np.ndarray, preds: np.ndarray) -> dict:
     n = max(len(y), 1)
-    ordinal_error = float(np.mean(np.abs(preds - y)) / 3.0)
+    ordinal_error = float(np.mean(np.abs(preds - y)) / 2.0)
 
-    critical_mask = y == 3
+    critical_mask = y == TOP_LEVEL
     if critical_mask.sum() > 0:
-        critical_recall = float(np.mean(preds[critical_mask] == 3))
-        critical_fn_rate = float(np.mean(preds[critical_mask] < 3))
+        critical_recall = float(np.mean(preds[critical_mask] == TOP_LEVEL))
+        critical_fn_rate = float(np.mean(preds[critical_mask] < TOP_LEVEL))
     else:
         critical_recall = 0.0
         critical_fn_rate = 0.0
 
-    non_critical_mask = y < 3
+    non_critical_mask = y < TOP_LEVEL
     if non_critical_mask.sum() > 0:
-        overtriage_rate = float(np.mean(preds[non_critical_mask] == 3))
+        overtriage_rate = float(np.mean(preds[non_critical_mask] == TOP_LEVEL))
     else:
         overtriage_rate = 0.0
 
@@ -45,17 +50,18 @@ def _priority_metrics(y: np.ndarray, preds: np.ndarray) -> dict:
 
 
 def _classify(scores: np.ndarray, thresholds: list[float]) -> np.ndarray:
+    """Clasifica en 3 niveles (0=BAJA, 1=MEDIA, 2=ALTA) con 2 umbrales."""
+    t1, t2 = thresholds
+    return np.where(scores < t1, 0, np.where(scores < t2, 1, 2))
+
+
+def _classify_legacy(scores: np.ndarray, thresholds: list[float]) -> np.ndarray:
+    """Compatibilidad con el legacy de 3 umbrales / 4 niveles (BAJA..CRÍTICA)."""
     t1, t2, t3 = thresholds
     return np.where(
         scores < t1, 0,
         np.where(scores < t2, 1, np.where(scores < t3, 2, 3)),
     )
-
-
-def _classify_legacy(scores: np.ndarray, thresholds: list[float]) -> np.ndarray:
-    """Compatibilidad con el legacy de 2 umbrales / 3 niveles (baseline)."""
-    t1, t2 = thresholds
-    return np.where(scores < t1, 0, np.where(scores < t2, 1, 2))
 
 
 class MetricsService:
@@ -67,8 +73,14 @@ class MetricsService:
         thresholds: list,
         bias: float = 0.0,
     ) -> dict:
-        scores = 1.0 / (1.0 + np.exp(-np.clip(X @ weights + bias, -20, 20)))
-        if len(thresholds) == 3:
+        # Mismo scoring que PSO (`_weighted_scores`) y `TriagePriorityService`:
+        # lineal normalizado `Σ(f·w)/Σ|w|`, NO sigmoide. `X` se asume ya
+        # normalizado a [0,1] (vía `build_feature_bundle`). `bias` se mantiene
+        # por compatibilidad de firma pero no se usa en el modelo lineal.
+        weights = np.asarray(weights, dtype=float)
+        total_abs = float(np.sum(np.abs(weights))) or 1.0
+        scores = np.clip((np.asarray(X, dtype=float) @ weights) / total_abs, 0.0, 1.0)
+        if len(thresholds) == 2:
             preds = _classify(scores, thresholds)
             return _priority_metrics(y, preds)
         preds = _classify_legacy(scores, thresholds)

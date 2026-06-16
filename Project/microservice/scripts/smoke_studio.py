@@ -74,7 +74,7 @@ async def _test_clinical_critical():
     print(f"  priority_score   = {response.priority_score}")
     print(f"  weights_version  = {response.weights_version}")
     print(f"  dominant_factors = {response.dominant_factors}")
-    assert response.priority in ("BAJA", "MEDIA", "ALTA", "CRÍTICA")
+    assert response.priority in ("BAJA", "MEDIA", "ALTA")
 
 
 async def _test_clinical_benign():
@@ -97,7 +97,7 @@ async def _test_clinical_benign():
     print(f"  risk_score       = {response.risk_score}")
     print(f"  risk_level       = {response.risk_level}")
     print(f"  priority         = {response.priority}")
-    assert response.priority in ("BAJA", "MEDIA", "ALTA", "CRÍTICA")
+    assert response.priority in ("BAJA", "MEDIA", "ALTA")
 
 
 def _test_pso_tool():
@@ -112,7 +112,7 @@ def _test_pso_tool():
     print(f"  curve (len)      = {len(result.get('convergence_curve', []))}")
     print(f"  metrics          = {json.dumps(result.get('metrics', {}), indent=4)}")
     assert len(result["weights"]) == 7
-    assert len(result["thresholds"]) == 3
+    assert len(result["thresholds"]) == 2
 
 
 if __name__ == "__main__":
