@@ -25,6 +25,8 @@ def _empty_row() -> MetricsRow:
 
 @router.get("/metrics/evaluation", response_model=MetricsComparison)
 async def metrics_evaluation(request: Request):
+    """Comparación baseline vs. optimizado (accuracy, F1, critical_recall, fitness).
+    Lee las métricas del último upload a ``POST /optimize``."""
     weights_path = request.app.state.settings.triage_weights_path
     metrics_path = Path(weights_path)
     if metrics_path.exists():
@@ -46,6 +48,7 @@ async def metrics_evaluation(request: Request):
 
 @router.get("/metrics/convergence")
 async def metrics_convergence(request: Request):
+    """Curva de convergencia del fitness por iteración de la última corrida PSO."""
     weights_path = Path(request.app.state.settings.triage_weights_path)
     curve_path = weights_path.parent / "convergence_curve.json"
     if not curve_path.exists():

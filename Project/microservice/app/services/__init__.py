@@ -16,6 +16,8 @@ PRODUCTION_ENVIRONMENTS = {"demo", "prod", "evaluation"}
 
 
 def validate_runtime_settings(settings: Settings) -> None:
+    # Embeddings fake producen vectores aleatorios: el RAG devuelve basura.
+    # Se bloquea antes del startup para evitar predicciones silenciosamente incorrectas.
     if settings.environment in PRODUCTION_ENVIRONMENTS:
         if settings.embedding_provider == "fake":
             raise RuntimeError(
@@ -25,6 +27,13 @@ def validate_runtime_settings(settings: Settings) -> None:
 
 
 class Services:
+    """Contenedor de todos los servicios del microservicio (singleton por instancia de FastAPI).
+
+    Instancia y conecta: ``RiskEngine``, ``RAGService``, ``TriagePriorityService``,
+    ``MetricsService``, LLM y los agentes LangGraph. ``initialize()`` es async
+    y debe llamarse en el ``lifespan`` de FastAPI antes de servir requests.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
