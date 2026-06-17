@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -18,6 +20,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        buildConfigField("String", "BACKEND_URL", "\"http://localhost:8000\"")
     }
 
     buildTypes {
@@ -25,6 +28,7 @@ android {
             optimization {
                 enable = false
             }
+            buildConfigField("String", "BACKEND_URL", "\"http://localhost:8000\"")
         }
     }
     compileOptions {
@@ -34,6 +38,7 @@ android {
     useLibrary("wear-sdk")
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -55,6 +60,33 @@ dependencies {
     implementation(libs.ui.tooling.preview)
     implementation(libs.watchface.complications.data.source.ktx)
     implementation(libs.wear.tooling.preview)
+
+    // Health Services
+    implementation(libs.health.services.client)
+
+    // HTTP
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.coroutines)
+    implementation(libs.logging.interceptor)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
+
+    // Serialization
+    implementation(libs.kotlinx.serialization.json)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.guava)
+
+    // DataStore
+    implementation(libs.datastore.preferences)
+
+    // Room
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.ui.test.junit4)
     debugImplementation(libs.tiles.renderer)

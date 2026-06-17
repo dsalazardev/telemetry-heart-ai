@@ -1,7 +1,7 @@
 from typing import Optional, List
-from datetime import date, datetime
+from datetime import date
 
-from sqlmodel import Field, SQLModel, Relationship
+from sqlmodel import SQLModel, Field, Relationship
 
 
 class Usuario(SQLModel, table=True):

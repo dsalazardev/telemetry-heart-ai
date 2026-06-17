@@ -5,7 +5,6 @@ from sqlmodel import Field, SQLModel, Relationship
 
 from app.models.usuario import Paciente, Medico
 
-
 from sqlalchemy.orm import foreign, remote
 
 
