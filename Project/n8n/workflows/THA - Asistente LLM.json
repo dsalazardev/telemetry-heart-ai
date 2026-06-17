@@ -1,0 +1,598 @@
+{
+  "name": "THA - Asistente LLM",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        256
+      ],
+      "webhookId": "telegram-heart-ai",
+      "id": "b581174d-3de6-431d-a9c8-4fab92b8daba",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    m.id as medico_id, \n    u.nombres as nombre, \n    u.apellidos as apellido, \n    m.especialidad, \n    m.\"telegramChatId\", \n    u.correo as email \nFROM medicos m \nJOIN usuarios u ON m.id = u.id \nWHERE m.\"telegramChatId\" = '{{ $json.message.chat.id }}'",
+        "options": {}
+      },
+      "name": "Identificar Medico",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        256
+      ],
+      "id": "03de4940-430a-4ec6-92ad-ee70f26d8990",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.telegramChatId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Medico Registrado IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1184,
+        256
+      ],
+      "id": "5cf8b6de-2959-4950-a4bd-2fab49b3162c"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegramChatId }}",
+        "text": "⚠️ Su número de Telegram no está registrado en el sistema. Contacte al administrador.",
+        "additionalFields": {}
+      },
+      "name": "Rechazar No Registrado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -992,
+        752
+      ],
+      "id": "d8021642-ec29-4bfb-8f2b-0e117fcf2e96",
+      "webhookId": "b453239e-8a97-48ea-96d7-0a1a44d2d446",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Medico Registrado IF').item.json.telegramChatId }}",
+        "text": "=⚠️ Por favor, ingrese el nombre o identificación del paciente correctamente para poder buscar su triaje.",
+        "additionalFields": {}
+      },
+      "name": "Responder Medico",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        64
+      ],
+      "id": "82d442ca-3e01-4f5a-a126-dfe22eda83e7",
+      "webhookId": "0abc825c-2f8a-4dd3-a636-3867aa80e9a8",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, \"tipoEvento\", detalle, exitoso, timestamp) VALUES (NULL, 'n8n_llm_exito', 'Respuesta enviada al médico', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Exito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        544,
+        96
+      ],
+      "id": "00d9484d-99ce-42a1-96e6-16b0dedaa587",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Telegram Trigger').item.json.message.text }}\nTu única tarea es actuar como un extractor de entidades médicas. Debes analizar el mensaje enviado por el médico y extraer el ID del paciente sobre el cual está preguntando.\n\nReglas estrictas de respuesta:\n\nSolo devuelve el numero del ID. No agregues saludos ni explicaciones.\n\nSi el mensaje del médico es ambiguo, genérico o no menciona a ningún paciente en absoluto, responde exactamente con la palabra: 'FALTA_INFORMACION'.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -864,
+        80
+      ],
+      "id": "788226cd-c9ad-4fcc-be0f-c33657ce87a2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -928,
+        320
+      ],
+      "id": "6917707c-7851-4bc8-8285-03915621bf7c",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "2AuAhHBgQTw80sD4",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').first().json.message.chat.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -768,
+        384
+      ],
+      "id": "7a53e087-41ac-48ea-975c-e89842908e72",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    t.id as triaje_id,\n    t.\"probabilidadRiesgo\",\n    t.\"nivelUrgencia\",\n    t.\"factoresCriticos\",\n    t.\"explicacionClinica\",\n    u.nombres as paciente_nombre,\n    u.apellidos as paciente_apellido\nFROM triajes t\nJOIN pacientes p ON t.paciente_id = p.id\nJOIN usuarios u ON p.id = u.id\nWHERE t.medico_id = {{ $('Identificar Medico').first().json.medico_id }}\n  AND t.paciente_id = {{ $('AI Agent').item.json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -336,
+        352
+      ],
+      "id": "351c4d5d-caac-4e84-9cc5-7d2994c9c22c",
+      "name": "Consulta",
+      "credentials": {
+        "postgres": {
+          "id": "mjkZfNri3iwI0ZMd",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "287f4ba5-8d1a-4bf7-a228-31ac6c5932f1",
+              "leftValue": "={{ $json.data }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        416
+      ],
+      "id": "bd8ed6ab-56df-44a1-8e26-dae0186c4ed7",
+      "name": "¿Trajo datos?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Identificar Medico').item.json.telegramChatId }}",
+        "text": "⚠️ No se encontraron registros de este paciente en su lista de pacientes asignados o no cuenta con los permisos de acceso requeridos.",
+        "additionalFields": {}
+      },
+      "name": "Rechazar No Registrado1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        688
+      ],
+      "id": "c740d071-5803-4c18-a9f3-00a682c63045",
+      "webhookId": "b453239e-8a97-48ea-96d7-0a1a44d2d446",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f28b15fb-9d8e-424a-b18f-a535ba25e0c2",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "FALTA_INFORMACION",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -528,
+        80
+      ],
+      "id": "06d5d007-9b2c-4b4b-adab-2aa4950c0ac9",
+      "name": "información incompleta"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres el asistente clínico del sistema cardiovascular THA. Tu tarea es redactar un reporte clínico breve y profesional en formato Markdown para el médico.\n\nA continuación, te proporciono los datos crudos extraídos de la base de datos para este paciente. Tu trabajo es organizarlos:\n\nDatos del paciente: {{ $json.data }}\n\nReglas de formato:\n\nUsa un título principal con el nombre del paciente.\n\nDestaca en negritas el Nivel de Urgencia y la Probabilidad de Riesgo.\n\nUsa viñetas para listar los Factores Críticos.\n\nAñade un breve párrafo final con la Explicación Clínica.\n\nNo agregues información inventada, usa estrictamente los datos proporcionados. Despídete formalmente.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        240,
+        416
+      ],
+      "id": "2e7f6aa2-7a2d-4b1b-a134-f478e873078c",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        240,
+        640
+      ],
+      "id": "a94024b9-fcb8-4138-ba21-98e64f7483ab",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "2AuAhHBgQTw80sD4",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Identificar Medico').item.json.telegramChatId }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        320
+      ],
+      "id": "ceeb267c-db74-4f2c-a2e6-5e22e904c06c",
+      "name": "Send a text message",
+      "webhookId": "02c73dbe-9793-48a8-802c-01c5f739c0bc",
+      "credentials": {
+        "telegramApi": {
+          "id": "iGTTe4JMDEJxFrGc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "include": "specifiedFields",
+        "fieldsToInclude": "triaje_id, probabilidadRiesgo, nivelUrgencia, factoresCriticos, explicacionClinica, paciente_nombre, paciente_apellido",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        256
+      ],
+      "id": "c82f2941-cf7a-4be6-9f51-640817a0717f",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Capturamos el objeto completo que entrega el nodo Aggregate\nconst datos = $input.first().json.data[0];\n\n// Usamos JSON.stringify para convertir todo el objeto en un texto plano\n// Esto evitará que JavaScript intente iterar sobre él y simplemente lo imprimirá todo\nreturn {\n  data: \"Reporte de datos crudos: \" + JSON.stringify(datos, null, 2)\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        176
+      ],
+      "id": "d0a63661-779e-47a8-8f93-e8f9e163ab3e",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Identificar Medico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identificar Medico": {
+      "main": [
+        [
+          {
+            "node": "Medico Registrado IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Medico Registrado IF": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rechazar No Registrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder Medico": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "información incompleta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consulta": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Trajo datos?": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rechazar No Registrado1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "información incompleta": {
+      "main": [
+        [
+          {
+            "node": "Responder Medico",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "¿Trajo datos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6b0b0136-90fc-4617-bf43-695c6eb1a1df",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ea6f41d3543e6d3f024a1cc9cb3052ef09678f722a4189d44625bb68c4fa540c"
+  },
+  "nodeGroups": [],
+  "id": "wOpgk3g2c5i3ZwVR",
+  "tags": []
+}

@@ -1,6 +1,26 @@
 <resources>
-    <string name="app_name">Wearos</string>
+    <string name="app_name">Telemetry Heart AI</string>
     <string name="hello_world">Hello, %1$s!</string>
-    <string name="tile_label">Example tile</string>
-    <string name="complication_label">Example complication</string>
+    <string name="tile_label">HR Monitor</string>
+    <string name="tile_hr_template">%d bpm</string>
+    <string name="complication_label">Heart Rate</string>
+    <string name="hr_label">Heart Rate</string>
+    <string name="hr_value_template">%d bpm</string>
+    <string name="risk_level">Risk Level</string>
+    <string name="risk_bajo">Bajo</string>
+    <string name="risk_medio">Medio</string>
+    <string name="risk_alto">Alto</string>
+    <string name="connection_status">Status</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="no_data">No data</string>
+    <string name="last_update">Last update</string>
+    <string name="check_hr_now">Check HR</string>
+    <string name="notification_channel_name">Heart Rate Monitor</string>
+    <string name="notification_channel_desc">Continuous heart rate monitoring</string>
+    <string name="notification_hr_text">%d bpm</string>
+    <string name="notification_risk_text">Risk: %s</string>
+    <string name="permission_required">Health permissions required</string>
+    <string name="permission_rationale">This app needs heart rate access to monitor your cardiovascular health.</string>
+    <string name="grant_permission">Grant permission</string>
 </resources>

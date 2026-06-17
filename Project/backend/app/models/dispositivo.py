@@ -47,4 +47,4 @@ class Evento(SQLModel, table=True):
     valorAgregado: Optional[dict] = Field(default=None, sa_type=JSON)
     workflow_id: Optional[int] = None
 
-    telemetrias: List[Telemetria] = Relationship(back_populates="evento")
+    telemetrias: List["Telemetria"] = Relationship(back_populates="evento")
