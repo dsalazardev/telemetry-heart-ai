@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     weights_path: str = "app/data/optimized_weights.json"
     triage_weights_path: str = "app/data/triage_priority_weights.json"
 
+    # Estrategia de priorización de triaje: "pso" (scoring ponderado optimizado)
+    # o "ml" (RandomForest supervisado persistido en `model_path`).
+    priority_strategy: str = "pso"
+    model_path: str = "app/data/model.pkl"
+
     chunk_size: int = 800
     chunk_overlap: int = 120
     retrieval_k: int = 4

@@ -6,6 +6,7 @@ from app.core.langsmith import get_client
 from app.core.resolver import create_embeddings, create_llm
 from app.services.metrics_service import MetricsService
 from app.services.rag_service import RAGService
+from app.services.ml_priority_service import MLPriorityService
 from app.services.risk_engine import RiskEngine
 from app.services.triage_priority_service import TriagePriorityService
 from app.agents import load_agents
@@ -62,7 +63,21 @@ class Services:
         self.llm = llm
         self.weights_path = settings.weights_path
 
-        self.triage_priority = TriagePriorityService(settings.triage_weights_path)
+        # Estrategia de priorización seleccionable. "ml" usa el RandomForest
+        # supervisado (model.pkl); cae a PSO si el modelo no carga, para no
+        # dejar el pipeline de triaje sin clasificador.
+        if settings.priority_strategy == "ml":
+            ml_service = MLPriorityService(settings.model_path)
+            if ml_service.loaded:
+                self.triage_priority = ml_service
+                logger.info("Priorización de triaje: estrategia ML (%s)", ml_service.version)
+            else:
+                self.triage_priority = TriagePriorityService(settings.triage_weights_path)
+                logger.warning(
+                    "priority_strategy=ml pero el modelo no cargó; usando PSO como fallback."
+                )
+        else:
+            self.triage_priority = TriagePriorityService(settings.triage_weights_path)
 
         self.agents = load_agents(self)
 
