@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
 from app.schemas.usuario import PacienteCreate, PacienteRead, PacienteUpdate, PerfilCreate, PerfilRead, PerfilUpdate
-from app.services import paciente_service
+from app.schemas.dispositivo import EventoRead
+from app.services import paciente_service, evento_service
 
 router = APIRouter()
 
@@ -74,3 +75,9 @@ async def crear_historial(paciente_id: int, data: dict, db: AsyncSession = Depen
 @router.get("/{paciente_id}/historiales")
 async def listar_historiales(paciente_id: int, db: AsyncSession = Depends(get_db)):
     return await paciente_service.listar_historiales(db, paciente_id)
+
+
+# ── Eventos ──
+@router.get("/{paciente_id}/eventos", response_model=List[EventoRead])
+async def listar_eventos_paciente(paciente_id: int, db: AsyncSession = Depends(get_db)):
+    return await evento_service.listar_eventos_por_paciente(db, paciente_id)

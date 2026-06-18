@@ -8,6 +8,22 @@ from app.schemas.dispositivo import EventoCreate
 from app.services import prediccion_service
 
 
+async def listar_eventos_por_paciente(db: AsyncSession, paciente_id: int, limit: int = 50) -> List[Evento]:
+    """Eventos del paciente, resueltos por el vínculo indirecto
+    Evento ← Telemetria → Dispositivo → Paciente. Ordenados del más reciente al más antiguo."""
+    stmt = (
+        select(Evento)
+        .join(Telemetria, Telemetria.evento_id == Evento.id)
+        .join(Dispositivo, Dispositivo.id == Telemetria.dispositivo_id)
+        .where(Dispositivo.paciente_id == paciente_id)
+        .distinct()
+        .order_by(Evento.ventanaFin.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 async def obtener_evento_activo(db: AsyncSession, tipo: str, ventana_minutos: int = 5) -> Optional[Evento]:
     ahora = datetime.utcnow()
     inicio_ventana = ahora - timedelta(minutes=ventana_minutos)
