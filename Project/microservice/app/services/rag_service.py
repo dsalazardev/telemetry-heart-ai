@@ -125,6 +125,34 @@ class RAGService:
             )
             return
 
+        self._index_clinical_docs()
+
+    def reindex(self) -> dict:
+        """Reconstruye el índice desde ``docs_dir``, descartando lo ya indexado.
+
+        A diferencia de ``initialize()``, ignora la existencia previa de
+        ``chroma.sqlite3``: borra la colección y vuelve a leer los ``.md``.
+        Útil para refrescar el RAG tras editar las guías clínicas sin reiniciar.
+        """
+        if not self.client:
+            raise RuntimeError("ChromaDB client no inicializado")
+
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.client.delete_collection(name="clinical_knowledge")
+        except Exception as e:
+            logger.warning("No se pudo borrar la colección previa: %s", e)
+        self.collection = self.client.get_or_create_collection(
+            name="clinical_knowledge",
+            metadata={"hnsw:space": "cosine"},
+        )
+        self.initialized = False
+        self.chunk_count = 0
+        self.doc_count = 0
+        self._index_clinical_docs()
+        return {"documents_indexed": self.doc_count, "chunks_count": self.chunk_count}
+
+    def _index_clinical_docs(self) -> None:
         documents = []
         for md_file in sorted(self.docs_dir.glob("*.md")):
             try:

@@ -1,3 +1,17 @@
+.priority-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-left: 0.5rem;
+
+  &.prio-baja { background: rgba(34, 197, 94, 0.15); color: #16a34a; }
+  &.prio-media { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+  &.prio-alta { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

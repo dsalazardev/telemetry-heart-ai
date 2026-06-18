@@ -55,4 +55,10 @@ async def procesar_prediccion(
         "risk_score": resp.risk_score,
         "risk_level": resp.risk_level,
         "threshold_exceeded": resp.threshold_exceeded,
+        "priority": resp.priority,
+        "priority_score": resp.priority_score,
+        "priority_level": resp.priority_level,
+        "dominant_factors": resp.dominant_factors,
+        "clinical_explanation": resp.clinical_explanation,
+        "recommended_action": resp.recommended_action,
     }

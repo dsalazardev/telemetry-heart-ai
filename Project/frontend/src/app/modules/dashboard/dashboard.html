@@ -59,6 +59,11 @@
               <div class="alert-content">
                 <div class="alert-header">
                   <span class="paciente-name">{{ alerta.paciente }}</span>
+                  <span
+                    *ngIf="alerta.priority"
+                    class="priority-badge"
+                    [ngClass]="'prio-' + alerta.priority.toLowerCase()"
+                  >{{ alerta.priority }}</span>
                   <span class="alert-time">{{ alerta.fecha | date:'HH:mm' }}</span>
                 </div>
                 <p class="alert-msg">{{ alerta.mensaje }}</p>

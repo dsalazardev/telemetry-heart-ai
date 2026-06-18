@@ -2,12 +2,13 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { catchError, map } from 'rxjs/operators';
+import { environment } from '../../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private baseUrl = 'http://localhost:8000';
+  private baseUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) { }
 
@@ -55,5 +56,10 @@ export class ApiService {
   delete<T>(endpoint: string): Observable<T> {
     return this.http.delete<T>(`${this.baseUrl}${endpoint}`, { headers: this.getHeaders() })
       .pipe(catchError(this.handleError));
+  }
+
+  /** Dispara la evaluación IA de un evento de telemetría y devuelve la predicción (riesgo + prioridad PSO). */
+  evaluarEvento<T>(eventoId: number): Observable<T> {
+    return this.post<T>(`/eventos/${eventoId}/evaluar`, {});
   }
 }
