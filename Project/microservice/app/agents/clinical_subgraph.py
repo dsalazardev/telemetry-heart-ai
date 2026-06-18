@@ -1,4 +1,5 @@
 import json
+import re
 from logging import getLogger
 from datetime import datetime, timezone
 
@@ -25,7 +26,10 @@ from app.agents.base import BaseAgent
 logger = getLogger(__name__)
 
 PROMPT_VERSION = "clinical_prompt_v3"
-MIN_RAG_SCORE = 0.65
+# Umbral de similitud coseno para aceptar evidencia RAG. MiniLM sobre texto
+# clínico en español rinde scores ~0.5-0.7 en matches relevantes; 0.65 era
+# demasiado estricto y descartaba evidencia válida ("evidencia insuficiente").
+MIN_RAG_SCORE = 0.5
 
 # Mapeo string→numérico de chest_pain. Debe coincidir con
 # `generate_synthetic.CHEST_PAIN_MAP` y `RiskEngine._chest_map`: el PSO se
@@ -67,6 +71,14 @@ MEDICO_EXPLAIN_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+def _strip_json_fence(text: str) -> str:
+    """Quita el envoltorio markdown ```json ... ``` que añaden algunos LLMs
+    (p. ej. gpt-4o-mini), para que ``model_validate_json`` pueda parsear."""
+    t = (text or "").strip()
+    m = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```$", t, re.DOTALL)
+    return m.group(1).strip() if m else t
+
+
 def build_safe_fallback_explanation(risk_result: dict, rag_sources: list | None) -> ClinicalExplanation:
     sources = []
     if rag_sources:
@@ -76,14 +88,27 @@ def build_safe_fallback_explanation(risk_result: dict, rag_sources: list | None)
                 "chunk_id": s.get("metadata", {}).get("chunk_id", ""),
                 "score": s.get("score", 0),
             })
+    level = risk_result.get("risk_level", "bajo")
+    score = risk_result.get("risk_score", 0.0)
+    factors = risk_result.get("dominant_factors", []) or []
+    factors_txt = ", ".join(factors) if factors else "sin factores dominantes significativos"
+    n_src = len(sources)
+    # Explicación compuesta a partir de los datos reales del caso (no el texto
+    # de la recomendación). Determinista, sin LLM, pero específica por paciente.
+    explanation = (
+        f"El RiskEngine estima un riesgo {level} (score {score:.2f}) a partir de "
+        f"los signos clínicos. Factores con mayor peso: {factors_txt}."
+    )
+    if n_src:
+        explanation += f" Coherente con {n_src} fuente(s) de la guía clínica indexada."
     return ClinicalExplanation(
-        risk_level=risk_result.get("risk_level", "bajo"),
-        risk_score=risk_result.get("risk_score", 0.0),
-        dominant_factors=risk_result.get("dominant_factors", []),
-        explanation=risk_result.get("recommended_action", "No se pudo generar explicación con LLM."),
+        risk_level=level,
+        risk_score=score,
+        dominant_factors=factors,
+        explanation=explanation,
         evidence=sources,
         recommended_action=risk_result.get("recommended_action", ""),
-        limitations="La explicación se limita al cálculo del RiskEngine sin validación de LLM.",
+        limitations="Explicación generada por reglas (RiskEngine), sin redacción del LLM.",
     )
 
 
@@ -242,6 +267,7 @@ class ClinicalGraph(BaseAgent):
                 "rag_sources": json.dumps(rag_info["sources"], ensure_ascii=False),
             })
             output = response.content if hasattr(response, "content") else str(response)
+            output = _strip_json_fence(output)
             try:
                 parsed = ClinicalExplanation.model_validate_json(output)
                 return {

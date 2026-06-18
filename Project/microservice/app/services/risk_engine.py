@@ -34,7 +34,9 @@ def normalize(value: float | None, low: float, high: float, invert: bool = False
 def _load_clinical_config(path: str | Path) -> dict:
     p = Path(path)
     if p.exists():
-        with open(p) as f:
+        # encoding explícito: en Windows open() usa cp1252 por defecto y
+        # corrompe los acentos del YAML ("saturación" → "saturaciÃ³n").
+        with open(p, encoding="utf-8") as f:
             return yaml.safe_load(f)
     logger.warning("Config %s no encontrado, usando defaults hardcoded", p)
     return {}
