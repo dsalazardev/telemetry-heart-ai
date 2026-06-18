@@ -120,41 +120,71 @@ import { of } from 'rxjs';
                   {{ evaluando ? 'Evaluando...' : '⚡ Evaluar' }}
                 </button>
               </div>
+              <div class="sim-bar">
+                <span class="sim-label">{{ simulando ? 'Simulando…' : 'Simular telemetría:' }}</span>
+                <button class="sim-btn sim-bajo" (click)="simular('bajo')" [disabled]="simulando">Bajo</button>
+                <button class="sim-btn sim-medio" (click)="simular('medio')" [disabled]="simulando">Medio</button>
+                <button class="sim-btn sim-alto" (click)="simular('alto')" [disabled]="simulando">Alto</button>
+              </div>
               <ng-template #sinEventos>
                 <p class="no-eventos">
                   {{ cargandoEventos ? 'Cargando eventos…' : '📭 Este paciente no tiene eventos de telemetría registrados.' }}
                 </p>
+                <div class="sim-bar" *ngIf="!cargandoEventos">
+                  <span class="sim-label">{{ simulando ? 'Simulando…' : 'Simular un caso:' }}</span>
+                  <button class="sim-btn sim-bajo" (click)="simular('bajo')" [disabled]="simulando">Bajo</button>
+                  <button class="sim-btn sim-medio" (click)="simular('medio')" [disabled]="simulando">Medio</button>
+                  <button class="sim-btn sim-alto" (click)="simular('alto')" [disabled]="simulando">Alto</button>
+                </div>
               </ng-template>
+              <p class="sim-error" *ngIf="simError">{{ simError }}</p>
 
               <!-- Resultado -->
               <div class="ai-content" *ngIf="prediccion as p">
-                <div class="result-row">
-                  <span class="result-label">Nivel de riesgo</span>
-                  <span class="risk-pill" [ngClass]="'risk-' + (p.risk_level || '')">
-                    {{ (p.risk_level || 'N/D') | uppercase }}
-                  </span>
+                <div class="ai-metrics">
+                  <div class="ai-metric">
+                    <span class="ai-metric-label">Nivel de riesgo</span>
+                    <span class="risk-pill" [ngClass]="'risk-' + (p.risk_level || '')">
+                      {{ (p.risk_level || 'N/D') | uppercase }}
+                    </span>
+                  </div>
+                  <div class="ai-metric" *ngIf="p.priority">
+                    <span class="ai-metric-label">Prioridad de triaje</span>
+                    <span class="priority-badge" [ngClass]="'prio-' + p.priority.toLowerCase()">
+                      {{ p.priority }}
+                    </span>
+                  </div>
                 </div>
-                <div class="result-row" *ngIf="p.priority">
-                  <span class="result-label">Prioridad de triaje (PSO)</span>
-                  <span class="priority-badge" [ngClass]="'prio-' + p.priority.toLowerCase()">
-                    {{ p.priority }}
-                  </span>
+
+                <div class="ai-section" *ngIf="p.recommended_action">
+                  <span class="ai-section-title">✅ Recomendación</span>
+                  <p>{{ p.recommended_action }}</p>
                 </div>
-                <p *ngIf="p.clinical_explanation">
-                  <strong>Explicación:</strong> {{ p.clinical_explanation }}
-                </p>
-                <p *ngIf="p.recommended_action">
-                  <strong>Recomendación:</strong> {{ p.recommended_action }}
-                </p>
-                <p *ngIf="p.dominant_factors?.length">
-                  <strong>Factores:</strong> {{ p.dominant_factors.join(', ') }}
-                </p>
+                <div class="ai-section" *ngIf="p.clinical_explanation">
+                  <span class="ai-section-title">💬 Explicación clínica</span>
+                  <p>{{ p.clinical_explanation }}</p>
+                </div>
+                <div class="ai-section" *ngIf="p.dominant_factors?.length">
+                  <span class="ai-section-title">📊 Factores determinantes</span>
+                  <div class="ai-chips">
+                    <span class="ai-chip" *ngFor="let f of p.dominant_factors">{{ f }}</span>
+                  </div>
+                </div>
               </div>
 
               <!-- Estado por defecto / error -->
-              <div class="ai-content" *ngIf="!prediccion">
-                <p *ngIf="!evalError"><strong>Estado:</strong> Sin análisis. Ingresa un ID de evento de telemetría y evalúa.</p>
-                <p *ngIf="evalError" class="eval-error"><strong>Error:</strong> {{ evalError }}</p>
+              <div class="ai-content ai-empty" *ngIf="!prediccion">
+                <ng-container *ngIf="!evalError; else errorBlock">
+                  <div class="ai-empty-icon">🧠</div>
+                  <p class="ai-hint">
+                    Sin análisis todavía.<br>
+                    Selecciona un evento de telemetría y pulsa <strong>Evaluar</strong>.
+                  </p>
+                </ng-container>
+                <ng-template #errorBlock>
+                  <div class="ai-empty-icon">⚠️</div>
+                  <p class="eval-error">{{ evalError }}</p>
+                </ng-template>
               </div>
             </div>
 
@@ -350,13 +380,20 @@ import { of } from 'rxjs';
       border: 1px dashed var(--border);
     }
 
-    .ai-card { border-left: 4px solid var(--primary); }
+    .ai-card {
+      border-left: 4px solid var(--primary);
+      display: flex; flex-direction: column;
+      min-height: 260px;
+    }
     .ai-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
     .ai-badge { background: var(--primary-low); color: var(--primary); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+    .ai-content {
+      flex: 1; display: flex; flex-direction: column;
+    }
     .ai-content p { margin-bottom: 0.75rem; font-size: 0.9375rem; line-height: 1.6; }
     .eval-error { color: var(--danger); }
 
-    .eval-trigger { display: flex; gap: 0.75rem; margin: 1rem 0; }
+    .eval-trigger { display: flex; gap: 0.75rem; margin: 1rem 0; flex-wrap: wrap; }
     .eval-trigger input {
       flex: 1; padding: 0.6rem 0.9rem; border-radius: var(--radius-md);
       border: 1px solid var(--border); font-family: inherit;
@@ -368,13 +405,25 @@ import { of } from 'rxjs';
     }
     .eval-trigger select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-low); }
     .no-eventos { font-size: 0.875rem; color: var(--text-muted); margin: 1rem 0; }
+    .sim-error { font-size: 0.8rem; color: var(--danger, #d62728); margin: 0.5rem 0 0; }
+    .sim-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0 0.25rem; flex-wrap: wrap; }
+    .sim-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; }
+    .sim-btn {
+      padding: 0.3rem 0.85rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
+      cursor: pointer; border: 1px solid transparent; font-family: inherit; transition: all 0.15s;
+    }
+    .sim-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .sim-bajo  { background: rgba(34,197,94,0.12);  color: #16a34a; border-color: rgba(34,197,94,0.35); }
+    .sim-medio { background: rgba(245,158,11,0.12); color: #d97706; border-color: rgba(245,158,11,0.35); }
+    .sim-alto  { background: rgba(239,68,68,0.12);  color: #dc2626; border-color: rgba(239,68,68,0.35); }
+    .sim-btn:hover:not(:disabled) { filter: brightness(0.95); transform: translateY(-1px); }
 
     .result-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
     .result-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
     .risk-pill, .priority-badge {
-      display: inline-block; padding: 0.15rem 0.7rem; border-radius: 999px;
-      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+      display: inline-block; padding: 0.3rem 0.85rem; border-radius: 999px;
+      font-size: 0.85rem; font-weight: 700; letter-spacing: 0.04em;
     }
     .risk-bajo { background: rgba(34,197,94,0.15); color: #16a34a; }
     .risk-medio { background: rgba(245,158,11,0.15); color: #d97706; }
@@ -382,6 +431,30 @@ import { of } from 'rxjs';
     .prio-baja { background: rgba(34,197,94,0.15); color: #16a34a; }
     .prio-media { background: rgba(245,158,11,0.15); color: #d97706; }
     .prio-alta { background: rgba(239,68,68,0.15); color: #dc2626; }
+
+    /* Análisis del Agente AI — resultado */
+    .ai-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; }
+    .ai-metric {
+      display: flex; flex-direction: column; gap: 0.55rem; align-items: flex-start;
+      padding: 1rem 1.25rem; border-radius: 14px;
+      background: rgba(99,102,241,0.04); border: 1px solid var(--border);
+    }
+    .ai-metric-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .ai-section { margin-bottom: 1rem; }
+    .ai-section:last-child { margin-bottom: 0; }
+    .ai-section-title { display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+    .ai-section p { margin: 0; font-size: 0.9375rem; line-height: 1.6; }
+    .ai-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .ai-chip { font-size: 0.78rem; padding: 0.28rem 0.7rem; border-radius: 999px; background: var(--primary-low); color: var(--primary); font-weight: 600; }
+    .ai-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 2rem 1rem;
+    }
+    .ai-empty-icon { font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.6; }
+    .ai-hint { font-size: 1rem; color: var(--text-muted); line-height: 1.7; max-width: 420px; }
+
+    @media (max-width: 520px) { .ai-metrics { grid-template-columns: 1fr; } }
 
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -436,12 +509,15 @@ export class PatientDetailComponent implements OnInit, OnDestroy {
   editData: any = null;
   toast: { mensaje: string; tipo: 'success' | 'error' } | null = null;
 
+  pacienteId: number | null = null;
   eventoId: number | null = null;
   evaluando = false;
   prediccion: any = null;
   evalError: string | null = null;
   eventos: any[] = [];
   cargandoEventos = false;
+  simulando = false;
+  simError: string | null = null;
 
   perfil: any = null;
   showPerfil = false;
@@ -468,6 +544,7 @@ export class PatientDetailComponent implements OnInit, OnDestroy {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       const pid = parseInt(id);
+      this.pacienteId = pid;
       this.cargarPaciente(pid);
       this.cargarPerfil(pid);
       this.cargarHistoriales(pid);
@@ -644,6 +721,28 @@ export class PatientDetailComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.evalError = err.message || 'No se pudo evaluar el evento';
+        }
+      });
+  }
+
+  /** Crea un evento + telemetría de demo del nivel dado y lo selecciona para Evaluar. */
+  simular(nivel: 'bajo' | 'medio' | 'alto' = 'alto') {
+    if (!this.pacienteId) { return; }
+    this.simulando = true;
+    this.simError = null;
+    this.api.simularTelemetria<any>(this.pacienteId, nivel)
+      .pipe(finalize(() => {
+        this.simulando = false;
+        this.cdr.detectChanges();
+      }))
+      .subscribe({
+        next: (evento) => {
+          // Recarga la lista y preselecciona el evento recién creado.
+          this.eventoId = evento?.id ?? null;
+          this.cargarEventos(this.pacienteId!);
+        },
+        error: (err) => {
+          this.simError = err.message || 'No se pudo simular la telemetría';
         }
       });
   }

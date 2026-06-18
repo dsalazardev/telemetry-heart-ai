@@ -58,9 +58,14 @@ export class ApiService {
       .pipe(catchError(this.handleError));
   }
 
-  /** Dispara la evaluación IA de un evento de telemetría y devuelve la predicción (riesgo + prioridad PSO). */
+  /** Dispara la evaluación IA de un evento de telemetría y devuelve la predicción (riesgo + prioridad de triaje). */
   evaluarEvento<T>(eventoId: number): Observable<T> {
     return this.post<T>(`/eventos/${eventoId}/evaluar`, {});
+  }
+
+  /** Genera un evento + telemetría de demo (nivel bajo/medio/alto) para poder evaluar desde la UI. */
+  simularTelemetria<T>(pacienteId: number, nivel: 'bajo' | 'medio' | 'alto' = 'alto'): Observable<T> {
+    return this.post<T>(`/pacientes/${pacienteId}/simular-telemetria`, { nivel });
   }
 
   /** Decodifica el payload del JWT guardado en localStorage (sin verificar firma). */
