@@ -68,3 +68,12 @@ class EventoUpdate(BaseModel):
     lecturas: Optional[int] = None
     valorAgregado: Optional[dict] = None
     workflow_id: Optional[int] = None
+
+
+class SimularTelemetriaRequest(BaseModel):
+    """Genera una lectura de telemetría de demo, ya enlazada a un evento nuevo.
+
+    ``nivel`` elige un preset clínico (bajo/medio/alto) que la evaluación usa
+    para producir un riesgo coherente. Default = alto.
+    """
+    nivel: str = "alto"  # "bajo" | "medio" | "alto"

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
 from app.schemas.usuario import PacienteCreate, PacienteRead, PacienteUpdate, PerfilCreate, PerfilRead, PerfilUpdate
-from app.schemas.dispositivo import EventoRead
+from app.schemas.dispositivo import EventoRead, SimularTelemetriaRequest
 from app.services import paciente_service, evento_service
 
 router = APIRouter()
@@ -81,3 +81,20 @@ async def listar_historiales(paciente_id: int, db: AsyncSession = Depends(get_db
 @router.get("/{paciente_id}/eventos", response_model=List[EventoRead])
 async def listar_eventos_paciente(paciente_id: int, db: AsyncSession = Depends(get_db)):
     return await evento_service.listar_eventos_por_paciente(db, paciente_id)
+
+
+@router.post(
+    "/{paciente_id}/simular-telemetria",
+    response_model=EventoRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def simular_telemetria_paciente(
+    paciente_id: int,
+    data: SimularTelemetriaRequest = SimularTelemetriaRequest(),
+    db: AsyncSession = Depends(get_db),
+):
+    """Genera un evento + telemetría enlazada (demo) para poder Evaluar desde la UI."""
+    evento = await evento_service.simular_telemetria(db, paciente_id, nivel=data.nivel)
+    if not evento:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    return evento
