@@ -35,7 +35,8 @@ export class DashboardComponent implements OnInit {
     this.api.get<any[]>('/alertas').subscribe({
       next: (data) => {
         this.alertas = data || [];
-        this.resumen.alertasCriticas = this.alertas.filter(a => a.tipo === 'CRITICA').length;
+        // El backend emite el nivel de riesgo del microservicio: 'bajo' | 'medio' | 'alto'.
+        this.resumen.alertasCriticas = this.alertas.filter(a => a.tipo === 'alto').length;
         this.loading = false;
       },
       error: () => {

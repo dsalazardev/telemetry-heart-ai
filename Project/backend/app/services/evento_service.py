@@ -90,6 +90,9 @@ async def evaluar_umbrales(db: AsyncSession, evento_id: int) -> dict:
         "risk_score": resultado_pred.get("risk_score"),
         "risk_level": resultado_pred.get("risk_level"),
         "threshold_exceeded": resultado_pred.get("threshold_exceeded"),
+        "priority": resultado_pred.get("priority"),
+        "priority_score": resultado_pred.get("priority_score"),
+        "priority_level": resultado_pred.get("priority_level"),
     }
     await db.commit()
     await db.refresh(evento)

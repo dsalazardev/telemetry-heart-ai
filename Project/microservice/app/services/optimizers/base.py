@@ -9,13 +9,14 @@ class OptimizerResult(BaseModel):
 
     Campos canónicos para PSO de prioridad clínica:
       - weights               : 7 pesos clínicos (list[float])
-      - thresholds            : 3 umbrales (t_medium, t_high, t_critical)
+      - thresholds            : 2 umbrales (t_medium, t_high)
       - priority_thresholds   : alias explícito de `thresholds` para consumidores
       - feature_weights_dict  : {feature_name: weight} para el priority service
       - convergence_curve     : fitness por iteración
       - best_fitness          : fitness final
       - metrics               : dict con accuracy, f1, critical_recall, etc.
       - critical_recall, overtriage_rate, ordinal_error : réplicas para consumers
+        (critical_recall = recall de la clase tope ALTA, nivel 2)
     """
 
     weights: list[float]

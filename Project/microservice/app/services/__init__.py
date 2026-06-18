@@ -16,6 +16,8 @@ PRODUCTION_ENVIRONMENTS = {"demo", "prod", "evaluation"}
 
 
 def validate_runtime_settings(settings: Settings) -> None:
+    # Embeddings fake producen vectores aleatorios: el RAG devuelve basura.
+    # Se bloquea antes del startup para evitar predicciones silenciosamente incorrectas.
     if settings.environment in PRODUCTION_ENVIRONMENTS:
         if settings.embedding_provider == "fake":
             raise RuntimeError(
@@ -25,6 +27,13 @@ def validate_runtime_settings(settings: Settings) -> None:
 
 
 class Services:
+    """Contenedor de todos los servicios del microservicio (singleton por instancia de FastAPI).
+
+    Instancia y conecta: ``RiskEngine``, ``RAGService``, ``TriagePriorityService``,
+    ``MetricsService``, LLM y los agentes LangGraph. ``initialize()`` es async
+    y debe llamarse en el ``lifespan`` de FastAPI antes de servir requests.
+    """
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
@@ -53,7 +62,7 @@ class Services:
         self.llm = llm
         self.weights_path = settings.weights_path
 
-        self.triage_priority = TriagePriorityService(settings.weights_path)
+        self.triage_priority = TriagePriorityService(settings.triage_weights_path)
 
         self.agents = load_agents(self)
 
@@ -116,4 +125,9 @@ class Services:
             errors.append("RAG no cargado (sin documentos indexados)")
         if not self.weights_loaded:
             errors.append("Pesos optimizados no encontrados (usando baseline)")
+        if not self.triage_priority.loaded:
+            logger.warning(
+                "TriagePriorityService en baseline (sin pesos PSO en %s)",
+                self.settings.triage_weights_path,
+            )
         return len(errors) == 0, errors

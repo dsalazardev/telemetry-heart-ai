@@ -1,0 +1,35 @@
+{
+  "weights": [
+    0.7378001234023849,
+    1.0,
+    0.744247146315917,
+    0.3094239745985007,
+    0.009901366202915804,
+    1.0,
+    0.0
+  ],
+  "thresholds": [
+    0.29128673564505014,
+    0.41897696281722163
+  ],
+  "feature_weights_dict": {
+    "heart_rate": 0.7378001234023849,
+    "spo2": 1.0,
+    "systolic_bp": 0.744247146315917,
+    "cholesterol": 0.3094239745985007,
+    "chest_pain": 0.009901366202915804,
+    "age": 1.0,
+    "other_risk_factors": 0.0
+  },
+  "version": "pso-2026-06-demo",
+  "algorithm": "PSO",
+  "metrics": {
+    "accuracy": 0.99,
+    "f1_score": 0.9879,
+    "macro_recall": 0.989,
+    "critical_recall": 1.0,
+    "overtriage_rate": 0.0081,
+    "ordinal_error": 0.005,
+    "fitness": 0.009054
+  }
+}

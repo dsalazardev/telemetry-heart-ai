@@ -19,6 +19,7 @@ def setup_env():
     os.environ["openai_api_key"] = "sk-test"
     os.environ["clinical_docs_path"] = str(Path(__file__).parent.parent / "app" / "data" / "clinical_docs")
     os.environ["weights_path"] = str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json")
+    os.environ["triage_weights_path"] = str(Path(__file__).parent.parent / "app" / "data" / "triage_priority_weights.json")
     yield
 
 
@@ -42,7 +43,7 @@ async def test_client():
     from app.schemas.prediction import PredictionResponse
 
     mock_engine = RiskEngine(str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json"))
-    mock_triage = TriagePriorityService(str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json"))
+    mock_triage = TriagePriorityService(str(Path(__file__).parent.parent / "app" / "data" / "triage_priority_weights.json"))
 
     mock_settings = MagicMock()
     mock_settings.internal_token = "test-token"
@@ -50,6 +51,7 @@ async def test_client():
     mock_settings.llm_provider = "openai"
     mock_settings.embedding_provider = "fake"
     mock_settings.weights_path = str(Path(__file__).parent.parent / "app" / "data" / "optimized_weights.json")
+    mock_settings.triage_weights_path = str(Path(__file__).parent.parent / "app" / "data" / "triage_priority_weights.json")
 
     mock_services = MagicMock()
     mock_services.settings = mock_settings

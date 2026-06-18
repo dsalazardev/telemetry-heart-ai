@@ -27,6 +27,17 @@ logger = getLogger(__name__)
 PROMPT_VERSION = "clinical_prompt_v3"
 MIN_RAG_SCORE = 0.65
 
+# Mapeo string→numérico de chest_pain. Debe coincidir con
+# `generate_synthetic.CHEST_PAIN_MAP` y `RiskEngine._chest_map`: el PSO se
+# entrena con el valor numérico 1-4, así que el runtime debe convertir el
+# `chest_pain_type` del request al mismo espacio antes de priorizar.
+CHEST_PAIN_MAP = {
+    "typical_angina": 1.0,
+    "atypical_angina": 2.0,
+    "non_anginal": 3.0,
+    "asymptomatic": 4.0,
+}
+
 CLINICAL_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """
 Eres un agente clínico de apoyo al triaje cardiovascular.
@@ -37,7 +48,7 @@ Responde únicamente en JSON válido con las claves exactas solicitadas.
 Riesgo calculado:
 - score: {risk_score}
 - nivel (3-niveles baseline): {risk_level}
-- prioridad (4-niveles PSO): {priority_label} (score={priority_score})
+- prioridad (3-niveles PSO): {priority_label} (score={priority_score})
 
 Factores dominantes: {dominant_factors}
 
@@ -124,6 +135,9 @@ class ClinicalGraph(BaseAgent):
         self.risk_engine = risk_engine
         self.rag = rag
         self.triage_priority = triage_priority
+        # Toolset LangChain registrado para el agente. No se hace `bind_tools`
+        # al LLM: el `optimize_triage_priority_tool` corre offline (Studio /
+        # scripts de evaluación), no dentro del flujo de `/predecir`.
         self.tools = list(ALL_TOOLS)
         self.graph = self._build_graph()
 
@@ -172,12 +186,15 @@ class ClinicalGraph(BaseAgent):
 
     async def _prioritize(self, state: ClinicalState) -> dict:
         data = state["features"]
+        # El request expone `chest_pain_type` (string); el PSO espera el
+        # numérico 1-4. Sin esta conversión la feature llega siempre como 0.
+        chest_pain = CHEST_PAIN_MAP.get(data.get("chest_pain_type"))
         bundle = build_feature_bundle(
             heart_rate=data.get("heart_rate"),
             spo2=data.get("spo2"),
             systolic_bp=data.get("systolic_bp"),
             cholesterol=data.get("cholesterol"),
-            chest_pain=data.get("chest_pain"),
+            chest_pain=chest_pain,
             age=data.get("age"),
             smoker=data.get("smoker"),
             previous_condition=data.get("previous_condition"),
@@ -273,7 +290,7 @@ class ClinicalGraph(BaseAgent):
             recommended_action=risk.get("recommended_action", ""),
             rag=rag_info,
             model={
-                "technique": "PSO-optimized weighted risk model",
+                "technique": "RiskEngine (sigmoid 11-pesos) + TriagePriorityService (PSO)",
                 "weights_version": getattr(self.risk_engine, "version", "unknown"),
                 "prompt_version": PROMPT_VERSION,
                 "rag_collection_version": "guidelines_v1",
@@ -321,7 +338,10 @@ class ClinicalGraph(BaseAgent):
             try:
                 return await clinical.run(request=req)
             except Exception as e:
-                logger.error("Error en /predecir: %s", e)
+                logger.error(
+                    "Error en /predecir (paciente_id=%s, %s): %s",
+                    req.paciente_id, type(e).__name__, e, exc_info=True,
+                )
                 return PredictionResponse(
                     paciente_id=req.paciente_id, evento_id=req.evento_id,
                     risk_score=0.0, risk_level="bajo", threshold_exceeded=False,

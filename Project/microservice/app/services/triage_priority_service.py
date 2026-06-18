@@ -1,12 +1,12 @@
-"""Servicio runtime de priorización clínica (4 niveles: BAJA/MEDIA/ALTA/CRÍTICA).
+"""Servicio runtime de priorización clínica (3 niveles: BAJA/MEDIA/ALTA).
 
-Carga `optimized_weights.json` (7 pesos + 3 umbrales producidos por PSO) y aplica
-el clasificador al vector de features normalizado.
+Carga `triage_priority_weights.json` (7 pesos + 2 umbrales producidos por PSO)
+y aplica el clasificador al vector de features normalizado.
 
 Responsabilidad única:
   1. Normalizar 7 features clínicos a [0, 1].
   2. Calcular score = sum(w_i * feature_i) / sum(|w_i|).
-  3. Clasificar en 0/1/2/3 según umbrales PSO.
+  3. Clasificar en 0/1/2 según umbrales PSO.
 
 Cero dependencias de FastAPI, LangChain, Chroma o LLM.
 """
@@ -33,7 +33,6 @@ PRIORITY_LABELS: dict[int, str] = {
     0: "BAJA",
     1: "MEDIA",
     2: "ALTA",
-    3: "CRÍTICA",
 }
 
 
@@ -108,7 +107,7 @@ class TriagePriorityService:
     def __init__(self, weights_path: str | Path):
         self.weights_path = Path(weights_path)
         self.weights: list[float] = [1.0 / 7.0] * 7
-        self.thresholds: list[float] = [0.40, 0.70, 0.85]
+        self.thresholds: list[float] = [0.40, 0.70]
         self.version: str = "baseline"
         self.feature_names: list[str] = list(FEATURE_ORDER)
         self._loaded: bool = False
@@ -118,8 +117,8 @@ class TriagePriorityService:
         """Recarga pesos desde disco. No-op silencioso si el archivo no existe.
 
         Tolerancia de esquema:
-          - ``thresholds`` con 2 valores (legacy 3-niveles) → sintetiza un
-            ``t_critical`` a ``max(0.85, t_high + 0.10)``.
+          - ``thresholds`` con 3 valores (legacy 4-niveles BAJA/MEDIA/ALTA/CRÍTICA)
+            → descarta el ``t_critical`` y conserva ``[t_medium, t_high]``.
           - ``weights`` con ≠ 7 dimensiones (legacy 11-features u otro) →
             rechaza silenciosamente y mantiene los defaults baseline.
         """
@@ -135,22 +134,22 @@ class TriagePriorityService:
             data = json.loads(self.weights_path.read_text(encoding="utf-8"))
             weights_raw = [float(w) for w in data["weights"]]
             thresholds_raw = [float(t) for t in data["thresholds"]]
+            thresholds_raw.sort()
 
-            if len(thresholds_raw) == 2:
-                synthesized = max(0.85, thresholds_raw[1] + 0.10)
-                thresholds_raw.append(synthesized)
+            if len(thresholds_raw) == 3:
+                dropped = thresholds_raw.pop()
                 logger.info(
-                    "JSON legacy detectado (2 umbrales); t_critical sintetizado a %.2f",
-                    synthesized,
+                    "JSON legacy 4-niveles detectado (3 umbrales); t_critical %.2f "
+                    "descartado, se usan 2 umbrales (3 niveles)",
+                    dropped,
                 )
-            elif len(thresholds_raw) != 3:
+            elif len(thresholds_raw) != 2:
                 logger.error(
-                    "Se esperaban 3 umbrales (o 2 legacy), se encontraron %d",
+                    "Se esperaban 2 umbrales (o 3 legacy), se encontraron %d",
                     len(thresholds_raw),
                 )
                 self._loaded = False
                 return
-            thresholds_raw.sort()
 
             if len(weights_raw) != 7:
                 logger.warning(
@@ -193,10 +192,8 @@ class TriagePriorityService:
         score = sum(f * w for f, w in zip(features.values, weights)) / total_abs
         score = max(0.0, min(1.0, score))
 
-        t_medium, t_high, t_critical = self.thresholds
-        if score >= t_critical:
-            level = 3
-        elif score >= t_high:
+        t_medium, t_high = self.thresholds
+        if score >= t_high:
             level = 2
         elif score >= t_medium:
             level = 1
@@ -214,15 +211,12 @@ class TriagePriorityService:
 
     @staticmethod
     def baseline_priority(risk_score: float) -> int:
-        """Baseline 3-niveles (Nivel 2) usado como referencia comparativa.
+        """Baseline 3-niveles usado como referencia comparativa.
 
-        Riesgo ≥ 0.85  → 3 (CRÍTICA)
         Riesgo ≥ 0.70  → 2 (ALTA)
         Riesgo ≥ 0.40  → 1 (MEDIA)
         Resto          → 0 (BAJA)
         """
-        if risk_score >= 0.85:
-            return 3
         if risk_score >= 0.70:
             return 2
         if risk_score >= 0.40:

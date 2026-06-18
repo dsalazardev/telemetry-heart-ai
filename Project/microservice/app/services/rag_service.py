@@ -1,3 +1,13 @@
+"""Servicio RAG sobre ChromaDB para recuperación de guías clínicas cardiovasculares.
+
+Flujo de inicialización:
+  1. Si ``chroma.sqlite3`` ya existe en ``persist_dir``, carga el índice existente.
+  2. Si no, lee todos los ``.md`` de ``docs_dir``, los fragmenta y los indexa.
+
+``retrieve()``/``retrieve_async()`` devuelven chunks ordenados por similitud coseno
+(score = 1 − distancia). El agente ``ClinicalGraph`` filtra adicionalmente los
+resultados con ``score >= MIN_RAG_SCORE`` antes de pasarlos al LLM.
+"""
 import time
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +26,14 @@ _CHROMA_DB_FILE = "chroma.sqlite3"
 
 
 class RAGService:
+    """ChromaDB-backed retrieval service para conocimiento clínico cardiovascular.
+
+    Soporta dos modos de embedding: proveedor LangChain (``Embeddings``) o
+    ``SentenceTransformer`` como fallback. Los documentos se fragmentan con
+    ``RecursiveCharacterTextSplitter`` y se almacenan en la colección
+    ``clinical_knowledge`` con metadatos de trazabilidad (fuente, chunk_index, fecha).
+    """
+
     def __init__(
         self,
         embedding=None,
@@ -30,7 +48,7 @@ class RAGService:
         self.chroma_path = persist_dir or settings.vectorstore_path
         self.persist_dir = Path(self.chroma_path)
         self.docs_dir = Path(docs_dir) if docs_dir else (
-            Path(__file__).resolve().parent.parent.parent / "data" / "knowledge_base"
+            Path(__file__).resolve().parent.parent / "data" / "clinical_docs"
         )
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -107,6 +125,34 @@ class RAGService:
             )
             return
 
+        self._index_clinical_docs()
+
+    def reindex(self) -> dict:
+        """Reconstruye el índice desde ``docs_dir``, descartando lo ya indexado.
+
+        A diferencia de ``initialize()``, ignora la existencia previa de
+        ``chroma.sqlite3``: borra la colección y vuelve a leer los ``.md``.
+        Útil para refrescar el RAG tras editar las guías clínicas sin reiniciar.
+        """
+        if not self.client:
+            raise RuntimeError("ChromaDB client no inicializado")
+
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.client.delete_collection(name="clinical_knowledge")
+        except Exception as e:
+            logger.warning("No se pudo borrar la colección previa: %s", e)
+        self.collection = self.client.get_or_create_collection(
+            name="clinical_knowledge",
+            metadata={"hnsw:space": "cosine"},
+        )
+        self.initialized = False
+        self.chunk_count = 0
+        self.doc_count = 0
+        self._index_clinical_docs()
+        return {"documents_indexed": self.doc_count, "chunks_count": self.chunk_count}
+
+    def _index_clinical_docs(self) -> None:
         documents = []
         for md_file in sorted(self.docs_dir.glob("*.md")):
             try:

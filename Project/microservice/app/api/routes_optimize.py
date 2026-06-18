@@ -34,7 +34,7 @@ async def upload_optimized_weights(
     services = request.app.state.services
     settings = services.settings
 
-    weights_path = Path(settings.weights_path)
+    weights_path = Path(settings.triage_weights_path)
     weights_payload = {
         "weights": req.weights,
         "thresholds": req.thresholds,

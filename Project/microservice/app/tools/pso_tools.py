@@ -15,11 +15,12 @@ import pandas as pd
 from langchain_core.tools import tool
 
 from app.services.optimizers.pso import PSOOptimizer
+from app.services.triage_priority_service import build_feature_bundle
 
 logger = getLogger(__name__)
 
 DEFAULT_CSV = Path("app/data/synthetic_cases.csv")
-DEFAULT_WEIGHTS_PATH = Path("app/data/optimized_weights.json")
+DEFAULT_WEIGHTS_PATH = Path("app/data/triage_priority_weights.json")
 DEFAULT_CURVE_PATH = Path("app/data/convergence_curve.json")
 
 FEATURE_COLUMNS = [
@@ -38,9 +39,8 @@ def _load_dataset(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Carga el dataset sintético. Devuelve (X, y_priority).
 
-    Se espera una columna `true_priority` ∈ {0,1,2,3}. Si no existe, se
-    deriva de `risk_level` legacy (bajo=0, medio=1, alto=2) marcando
-    `alto` con score >= 0.85 como 3 (CRÍTICA).
+    Se espera una columna `true_priority` ∈ {0,1,2}. Si no existe, se
+    deriva de `risk_level` legacy (bajo=0, medio=1, alto=2).
     """
     if not csv_path.exists():
         raise FileNotFoundError(f"Dataset no encontrado: {csv_path}")
@@ -48,27 +48,58 @@ def _load_dataset(
     df = pd.read_csv(csv_path)
 
     if "true_priority" in df.columns:
-        y = df["true_priority"].astype(int).to_numpy()
+        # Clamp defensivo: datasets legacy 4-niveles colapsan CRÍTICA→ALTA.
+        y = df["true_priority"].astype(int).clip(upper=2).to_numpy()
     elif "risk_level" in df.columns:
         mapping = {"bajo": 0, "medio": 1, "alto": 2}
-        y_base = df["risk_level"].map(mapping).fillna(0).astype(int).to_numpy()
-        score_col = "risk_score" if "risk_score" in df.columns else None
-        if score_col is not None:
-            y = np.where(
-                (y_base == 2) & (df[score_col] >= 0.85), 3, y_base
-            ).astype(int)
-        else:
-            y = y_base
+        y = df["risk_level"].map(mapping).fillna(0).astype(int).to_numpy()
     else:
         raise ValueError(
             "Dataset no contiene `true_priority` ni `risk_level`; no se puede entrenar PSO"
         )
 
-    for col in FEATURE_COLUMNS:
-        if col not in df.columns:
+    # Columnas crudas que alimentan la normalización canónica de runtime.
+    raw_cols = [
+        "heart_rate", "spo2", "systolic_bp", "cholesterol",
+        "chest_pain", "age", "smoker", "previous_condition",
+    ]
+    missing = [col for col in raw_cols if col not in df.columns]
+    if missing:
+        logger.warning(
+            "Dataset %s sin columnas crudas %s; se rellenan con 0.0. "
+            "Verifica que el CSV tenga las features esperadas: %s",
+            csv_path,
+            missing,
+            raw_cols,
+        )
+        for col in missing:
             df[col] = 0.0
 
-    X = df[FEATURE_COLUMNS].astype(float).to_numpy()
+    # Normalizar EXACTAMENTE como runtime (`build_feature_bundle`): escala
+    # clínica a [0, 1] + inversión de spo2. Sin esto, el PSO entrena sobre
+    # features crudas que se saturan al clip y los pesos no transfieren a
+    # inferencia (train/serve skew).
+    try:
+        X = np.array(
+            [
+                build_feature_bundle(
+                    heart_rate=float(row["heart_rate"]),
+                    spo2=float(row["spo2"]),
+                    systolic_bp=float(row["systolic_bp"]),
+                    cholesterol=float(row["cholesterol"]),
+                    chest_pain=float(row["chest_pain"]),
+                    age=float(row["age"]),
+                    smoker=bool(row["smoker"]),
+                    previous_condition=bool(row["previous_condition"]),
+                ).as_array()
+                for _, row in df.iterrows()
+            ],
+            dtype=float,
+        )
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"No se pudieron normalizar las features en {csv_path}: {exc}"
+        ) from exc
     return X, y
 
 
@@ -104,16 +135,16 @@ def optimize_triage_priority_tool(
     n_particles: int = 30,
     iterations: int = 50,
     csv_path: str = "app/data/synthetic_cases.csv",
-    weights_path: str = "app/data/optimized_weights.json",
+    weights_path: str = "app/data/triage_priority_weights.json",
     curve_path: str = "app/data/convergence_curve.json",
 ) -> dict:
     """Optimiza pesos+umbrales de priorización cardiovascular con PSO.
 
-    Codificación: 7 pesos clínicos + 3 umbrales (t_medium, t_high, t_critical).
-    Función objetivo: ordinal_error + 3·critical_FN + 0.5·overtriage.
+    Codificación: 7 pesos clínicos + 2 umbrales (t_medium, t_high).
+    Función objetivo: ordinal_error + 3·top_FN + 0.5·overtriage.
 
-    Persiste el resultado en `optimized_weights.json` y la curva de convergencia
-    en `convergence_curve.json`. Devuelve el OptimizerResult completo con
+    Persiste el resultado en `triage_priority_weights.json` y la curva de
+    convergencia en `convergence_curve.json`. Devuelve el OptimizerResult completo con
     métricas (accuracy, critical_recall, fitness) y la curva de fitness por
     iteración.
 

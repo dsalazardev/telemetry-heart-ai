@@ -81,9 +81,50 @@ import { finalize } from 'rxjs/operators';
                 <h3>🧠 Análisis del Agente AI</h3>
                 <span class="ai-badge">Telemetry Heart AI</span>
               </div>
-              <div class="ai-content">
-                <p><strong>Estado:</strong> Paciente sin triajes registrados. En espera de primera sesión de telemetría.</p>
-                <p><strong>Recomendación:</strong> Vincula un dispositivo WearOS para comenzar el monitoreo cardiovascular automatizado.</p>
+
+              <!-- Disparador de evaluación -->
+              <div class="eval-trigger">
+                <input
+                  type="number"
+                  [(ngModel)]="eventoId"
+                  name="eventoId"
+                  placeholder="ID de evento de telemetría"
+                  min="1"
+                >
+                <button class="btn btn-primary" (click)="evaluar()" [disabled]="!eventoId || evaluando">
+                  {{ evaluando ? 'Evaluando...' : '⚡ Evaluar' }}
+                </button>
+              </div>
+
+              <!-- Resultado -->
+              <div class="ai-content" *ngIf="prediccion as p">
+                <div class="result-row">
+                  <span class="result-label">Nivel de riesgo</span>
+                  <span class="risk-pill" [ngClass]="'risk-' + (p.risk_level || '')">
+                    {{ (p.risk_level || 'N/D') | uppercase }}
+                  </span>
+                </div>
+                <div class="result-row" *ngIf="p.priority">
+                  <span class="result-label">Prioridad de triaje (PSO)</span>
+                  <span class="priority-badge" [ngClass]="'prio-' + p.priority.toLowerCase()">
+                    {{ p.priority }}
+                  </span>
+                </div>
+                <p *ngIf="p.clinical_explanation">
+                  <strong>Explicación:</strong> {{ p.clinical_explanation }}
+                </p>
+                <p *ngIf="p.recommended_action">
+                  <strong>Recomendación:</strong> {{ p.recommended_action }}
+                </p>
+                <p *ngIf="p.dominant_factors?.length">
+                  <strong>Factores:</strong> {{ p.dominant_factors.join(', ') }}
+                </p>
+              </div>
+
+              <!-- Estado por defecto / error -->
+              <div class="ai-content" *ngIf="!prediccion">
+                <p *ngIf="!evalError"><strong>Estado:</strong> Sin análisis. Ingresa un ID de evento de telemetría y evalúa.</p>
+                <p *ngIf="evalError" class="eval-error"><strong>Error:</strong> {{ evalError }}</p>
               </div>
             </div>
           </div>
@@ -204,6 +245,28 @@ import { finalize } from 'rxjs/operators';
     .ai-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
     .ai-badge { background: var(--primary-low); color: var(--primary); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
     .ai-content p { margin-bottom: 0.75rem; font-size: 0.9375rem; line-height: 1.6; }
+    .eval-error { color: var(--danger); }
+
+    .eval-trigger { display: flex; gap: 0.75rem; margin: 1rem 0; }
+    .eval-trigger input {
+      flex: 1; padding: 0.6rem 0.9rem; border-radius: var(--radius-md);
+      border: 1px solid var(--border); font-family: inherit;
+    }
+    .eval-trigger input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-low); }
+
+    .result-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .result-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .risk-pill, .priority-badge {
+      display: inline-block; padding: 0.15rem 0.7rem; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+    }
+    .risk-bajo { background: rgba(34,197,94,0.15); color: #16a34a; }
+    .risk-medio { background: rgba(245,158,11,0.15); color: #d97706; }
+    .risk-alto { background: rgba(239,68,68,0.15); color: #dc2626; }
+    .prio-baja { background: rgba(34,197,94,0.15); color: #16a34a; }
+    .prio-media { background: rgba(245,158,11,0.15); color: #d97706; }
+    .prio-alta { background: rgba(239,68,68,0.15); color: #dc2626; }
 
     .modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -240,6 +303,11 @@ export class PatientDetailComponent implements OnInit {
   guardando = false;
   editData: any = null;
   toast: { mensaje: string; tipo: 'success' | 'error' } | null = null;
+
+  eventoId: number | null = null;
+  evaluando = false;
+  prediccion: any = null;
+  evalError: string | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -299,6 +367,30 @@ export class PatientDetailComponent implements OnInit {
         this.mostrarToast('Error al actualizar: ' + (err.message || 'Error desconocido'), 'error');
       }
     });
+  }
+
+  evaluar() {
+    if (!this.eventoId) { return; }
+    this.evaluando = true;
+    this.evalError = null;
+    this.prediccion = null;
+    this.api.evaluarEvento<any>(this.eventoId)
+      .pipe(finalize(() => {
+        this.evaluando = false;
+        this.cdr.detectChanges();
+      }))
+      .subscribe({
+        next: (data) => {
+          if (data?.status && data.status !== 'ok') {
+            this.evalError = data.detail || data.status;
+          } else {
+            this.prediccion = data;
+          }
+        },
+        error: (err) => {
+          this.evalError = err.message || 'No se pudo evaluar el evento';
+        }
+      });
   }
 
   volver() {

@@ -1,3 +1,13 @@
+"""Motor de riesgo cardiovascular basado en regresión logística con 11 pesos.
+
+Modelo: ``score = sigmoid(Σ(feature_i · weight_i) + bias)``
+Salida: score ∈ [0, 1] → nivel bajo/medio/alto según umbrales configurables.
+
+Este esquema es DISTINTO al de ``TriagePriorityService`` (PSO, 7 pesos, modelo
+lineal normalizado). Ver README §Arquitectura para la distinción completa.
+Los 11 pesos se cargan desde ``optimized_weights.json``; si el archivo no existe
+se usan pesos uniformes (baseline-v1).
+"""
 import json
 from logging import getLogger
 from pathlib import Path
@@ -34,6 +44,14 @@ CLINICAL_CONFIG = _load_clinical_config(DEFAULT_CONFIG_PATH)
 
 
 class RiskEngine:
+    """Predice riesgo cardiovascular (bajo/medio/alto) con modelo sigmoid 11-pesos.
+
+    Los pesos y umbrales se leen de ``weights_path`` en cada arranque. Si el
+    archivo falta, opera en baseline (pesos uniformes, bias -0.5). El método
+    ``predict()`` también retorna los ``dominant_factors``: features cuyo
+    contribución ponderada supera ``dominant_weight_threshold``.
+    """
+
     def __init__(self, weights_path: str, config: dict | None = None):
         self.config = config or CLINICAL_CONFIG
         self.weights_path = Path(weights_path)

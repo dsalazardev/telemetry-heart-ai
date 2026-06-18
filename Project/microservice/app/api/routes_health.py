@@ -7,6 +7,7 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(request: Request):
+    """Estado de todos los subsistemas: LLM, embeddings, ChromaDB, agentes y LangSmith."""
     services = request.app.state.services
     settings = services.settings
     client = get_client()
