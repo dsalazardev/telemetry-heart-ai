@@ -62,4 +62,28 @@ export class ApiService {
   evaluarEvento<T>(eventoId: number): Observable<T> {
     return this.post<T>(`/eventos/${eventoId}/evaluar`, {});
   }
+
+  /** Decodifica el payload del JWT guardado en localStorage (sin verificar firma). */
+  private decodeToken(): any | null {
+    const token = localStorage.getItem('token');
+    if (!token) { return null; }
+    try {
+      const payload = token.split('.')[1];
+      const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Id del usuario autenticado (claim `sub` del JWT). Ojo: NO es el medico_id. */
+  getCurrentUserId(): number | null {
+    const sub = this.decodeToken()?.sub;
+    return sub != null ? Number(sub) : null;
+  }
+
+  /** Tipo del usuario autenticado (claim `tipo`: 'medico' | 'paciente' | ...). */
+  getCurrentUserTipo(): string | null {
+    return this.decodeToken()?.tipo ?? null;
+  }
 }

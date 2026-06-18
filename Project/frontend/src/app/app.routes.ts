@@ -3,6 +3,9 @@ import { LoginComponent } from './modules/login/login';
 import { DashboardComponent } from './modules/dashboard/dashboard';
 import { PacientesComponent } from './modules/pacientes/pacientes';
 import { PatientDetailComponent } from './modules/pacientes/patient-detail';
+import { TriajesComponent } from './modules/triajes/triajes';
+import { TriajeDetailComponent } from './modules/triajes/triaje-detail';
+import { AlertasComponent } from './modules/alertas/alertas';
 import { authGuard } from './core/guards/auth';
 
 export const routes: Routes = [
@@ -17,15 +20,25 @@ export const routes: Routes = [
     component: PacientesComponent,
     canActivate: [authGuard] 
   },
-  { 
-    path: 'pacientes/:id', 
+  {
+    path: 'pacientes/:id',
     component: PatientDetailComponent,
-    canActivate: [authGuard] 
+    canActivate: [authGuard]
   },
-  { 
-    path: 'alertas', 
-    component: PacientesComponent, 
-    canActivate: [authGuard] 
+  {
+    path: 'triajes',
+    component: TriajesComponent,
+    canActivate: [authGuard]
+  },
+  {
+    path: 'triajes/:id',
+    component: TriajeDetailComponent,
+    canActivate: [authGuard]
+  },
+  {
+    path: 'alertas',
+    component: AlertasComponent,
+    canActivate: [authGuard]
   },
   { 
     path: 'config', 
