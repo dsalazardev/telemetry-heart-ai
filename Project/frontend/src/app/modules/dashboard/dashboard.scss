@@ -112,15 +112,34 @@
     .alert-msg { font-size: 0.875rem; color: var(--text-muted); margin: 0; }
   }
 
-  &.critica {
+  // Nivel de riesgo emitido por el microservicio: bajo | medio | alto.
+  &.alto, &.critica {
     border-left-color: var(--danger);
     .alert-status { background: var(--danger); }
   }
 
-  &.advertencia {
+  &.medio, &.advertencia {
     border-left-color: var(--warning);
     .alert-status { background: var(--warning); }
   }
+
+  &.bajo {
+    border-left-color: var(--success);
+    .alert-status { background: var(--success); }
+  }
+}
+
+.load-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  font-size: 0.875rem;
 }
 
 .placeholder-chart {

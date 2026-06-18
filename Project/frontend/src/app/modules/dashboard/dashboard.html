@@ -17,6 +17,11 @@
     </header>
 
     <div class="content-body fade-in">
+      <!-- Aviso si algún endpoint del backend no respondió -->
+      <div class="load-error" *ngIf="loadError && !loading">
+        ⚠️ Algunos datos no pudieron cargarse desde el backend. Mostrando la información disponible.
+      </div>
+
       <!-- Resumen Cards -->
       <section class="stats-grid">
         <div class="glass-card stat-card primary">
@@ -54,16 +59,11 @@
           </div>
 
           <div class="alert-list" *ngIf="!loading; else loader">
-            <div *ngFor="let alerta of alertas" class="alert-item" [ngClass]="alerta.tipo.toLowerCase()">
+            <div *ngFor="let alerta of alertas" class="alert-item" [ngClass]="(alerta.tipo || '').toLowerCase()">
               <div class="alert-status"></div>
               <div class="alert-content">
                 <div class="alert-header">
                   <span class="paciente-name">{{ alerta.paciente }}</span>
-                  <span
-                    *ngIf="alerta.priority"
-                    class="priority-badge"
-                    [ngClass]="'prio-' + alerta.priority.toLowerCase()"
-                  >{{ alerta.priority }}</span>
                   <span class="alert-time">{{ alerta.fecha | date:'HH:mm' }}</span>
                 </div>
                 <p class="alert-msg">{{ alerta.mensaje }}</p>
