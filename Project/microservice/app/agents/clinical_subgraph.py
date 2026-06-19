@@ -169,13 +169,15 @@ class ClinicalGraph(BaseAgent):
     def _build_graph(self) -> StateGraph:
         builder = StateGraph(ClinicalState)
 
+        builder.add_node("preprocess", self._preprocess)
         builder.add_node("normalize_and_predict", self._normalize_and_predict)
         builder.add_node("prioritize", self._prioritize)
         builder.add_node("retrieve_rag", self._retrieve_rag)
         builder.add_node("explain", self._explain)
         builder.add_node("format_response", self._format_response)
 
-        builder.add_edge(START, "normalize_and_predict")
+        builder.add_edge(START, "preprocess")
+        builder.add_edge("preprocess", "normalize_and_predict")
         builder.add_edge("normalize_and_predict", "prioritize")
         builder.add_conditional_edges(
             "prioritize",
@@ -188,17 +190,35 @@ class ClinicalGraph(BaseAgent):
 
         return builder.compile()
 
+    def _preprocess(self, state: ClinicalState) -> dict:
+        """Detecta input de Studio (sin key ``request``) y lo envuelve.
+
+        LangGraph Studio envía ``{"heart_rate": 160, ...}`` como dict
+        plano; ``ClinicalState`` (BaseModel con ``extra="allow"``)
+        preserva esas keys.  Si ``request`` está ausente pero hay
+        campos de ``PredictionRequest``, re-empaquetamos el payload
+        para que el grafo lo procese igual que desde la API.
+        """
+        if getattr(state, "request", None) is not None:
+            return {}
+        # Studio input: los campos del request están en model_extra
+        extra = getattr(state, "model_extra", None) or {}
+        if "heart_rate" in extra:
+            return {"request": extra}
+        return {}
+
+
     def _should_explain(self, state: ClinicalState) -> bool:
-        if not state["request"]:
+        if not state.request:
             return False
         try:
-            req = _coerce_request(state["request"])
+            req = _coerce_request(state.request)
         except (TypeError, ValidationError):
             return False
         return bool(req.explain)
 
     async def _normalize_and_predict(self, state: ClinicalState) -> dict:
-        req_raw = state["request"]
+        req_raw = state.request
         if req_raw is None:
             return {"error": "request is None"}
         try:
@@ -210,7 +230,7 @@ class ClinicalGraph(BaseAgent):
         return {"features": data, "risk_result": risk}
 
     async def _prioritize(self, state: ClinicalState) -> dict:
-        data = state["features"]
+        data = state.features
         # El request expone `chest_pain_type` (string); el PSO espera el
         # numérico 1-4. Sin esta conversión la feature llega siempre como 0.
         chest_pain = CHEST_PAIN_MAP.get(data.get("chest_pain_type"))
@@ -228,18 +248,18 @@ class ClinicalGraph(BaseAgent):
         return {"priority_result": priority}
 
     async def _retrieve_rag(self, state: ClinicalState) -> dict:
-        dominant = state["risk_result"].get("dominant_factors", [])
+        dominant = state.risk_result.get("dominant_factors", [])
         query = ", ".join(dominant) if dominant else "factores de riesgo cardiovascular"
         k = getattr(self.rag, "retrieval_k", 4)
         sources = await self.rag.retrieve_async(query, k=k)
         return {"rag_sources": sources}
 
     async def _explain(self, state: ClinicalState) -> dict:
-        risk = state["risk_result"]
-        priority = state.get("priority_result")
+        risk = state.risk_result
+        priority = getattr(state, "priority_result", None)
         k = getattr(self.rag, "retrieval_k", 4)
 
-        raw_sources = state.get("rag_sources") or []
+        raw_sources = state.rag_sources or []
         valid_sources = [s for s in raw_sources if s.get("score", 0) >= MIN_RAG_SCORE]
 
         if not valid_sources:
@@ -290,12 +310,12 @@ class ClinicalGraph(BaseAgent):
             }
 
     async def _format_response(self, state: ClinicalState) -> dict:
-        req = _coerce_request(state["request"]) if state["request"] else None
-        risk = state["risk_result"]
-        priority = state.get("priority_result")
-        rag_info = _build_rag_info(state["rag_sources"]) if state["rag_sources"] else {"used": False, "sources": []}
+        req = _coerce_request(state.request) if state.request else None
+        risk = state.risk_result
+        priority = getattr(state, "priority_result", None)
+        rag_info = _build_rag_info(state.rag_sources) if state.rag_sources else {"used": False, "sources": []}
 
-        structured = state.get("clinical_explanation_structured")
+        structured = getattr(state, "clinical_explanation_structured", None)
         if structured:
             try:
                 explanation_structured = ClinicalExplanation.model_validate(structured)
@@ -311,7 +331,7 @@ class ClinicalGraph(BaseAgent):
             risk_level=risk.get("risk_level", "bajo"),
             threshold_exceeded=risk.get("threshold_exceeded", False),
             dominant_factors=risk.get("dominant_factors", []),
-            clinical_explanation=state.get("clinical_explanation"),
+            clinical_explanation=state.clinical_explanation,
             explanation_structured=explanation_structured,
             recommended_action=risk.get("recommended_action", ""),
             rag=rag_info,

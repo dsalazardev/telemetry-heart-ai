@@ -7,6 +7,7 @@ from app.core.resolver import create_llm, create_embeddings
 from app.services.risk_engine import RiskEngine
 from app.services.rag_service import RAGService
 from app.services.triage_priority_service import TriagePriorityService
+from app.services.ml_priority_service import MLPriorityService
 from app.agents.clinical_subgraph import ClinicalGraph
 
 logger = getLogger(__name__)
@@ -29,7 +30,16 @@ _rag = RAGService(
     retrieval_k=settings.retrieval_k,
     retrieval_max_length=settings.retrieval_max_length,
 )
-_triage_priority = TriagePriorityService(settings.triage_weights_path)
+if settings.priority_strategy == "ml":
+    ml = MLPriorityService(settings.model_path)
+    if ml.loaded:
+        _triage_priority = ml
+        logger.info("Studio: priorización ML (%s)", ml.version)
+    else:
+        _triage_priority = TriagePriorityService(settings.triage_weights_path)
+        logger.warning("Studio: priority_strategy=ml pero model.pkl no cargó; usando PSO")
+else:
+    _triage_priority = TriagePriorityService(settings.triage_weights_path)
 
 _clinical = ClinicalGraph(_llm, _risk_engine, _rag, _triage_priority)
 
