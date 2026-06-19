@@ -36,4 +36,4 @@ El objetivo es que el agente explique riesgo y priorización clínica con más r
 
 ## Archivos
 
-Incluye 25 documentos `.md` y un manifiesto JSON. Cada documento contiene fuentes oficiales al final.
+Incluye 25 documentos clínicos `.md` (numerados 01–25), un README (`00`), un manifiesto JSON (`26_MANIFEST.json`) y su versión Markdown (`26_MANIFEST.md`). Cada documento contiene fuentes oficiales al final.
