@@ -20,7 +20,20 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        buildConfigField("String", "BACKEND_URL", "\"http://localhost:8000\"")
+        val envFile = file(".env")
+        if (envFile.exists()) {
+            envFile.readLines().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
+                    val parts = trimmed.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        val key = parts[0].trim()
+                        val value = parts[1].trim().removeSurrounding("\"")
+                        buildConfigField("String", key, "\"$value\"")
+                    }
+                }
+            }
+        }
     }
 
     buildTypes {
