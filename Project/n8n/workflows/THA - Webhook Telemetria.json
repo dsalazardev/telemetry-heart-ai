@@ -1,0 +1,326 @@
+{
+  "name": "THA - Webhook Telemetria",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemetria",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Telemetria",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2656,
+        -128
+      ],
+      "webhookId": "telemetria",
+      "id": "465140be-cfdb-4b9d-9822-4f8232f6952f"
+    },
+    {
+      "parameters": {
+        "functionCode": "const item = $json.body;\nconst fc = parseFloat(item.frecuenciaCardiaca);\nconst spo2 = parseFloat(item.spo2);\nconst pid = parseInt(item.paciente_id, 10);\n\nif (isNaN(fc) || isNaN(spo2) || isNaN(pid)) {\n  throw new Error(`Datos inválidos: FC=${item.frecuenciaCardiaca}, SpO2=${item.spo2}, paciente=${item.paciente_id}`);\n}\n\nlet ecg = \"NULL\";\nif (item.anomaliaEcg != null && item.anomaliaEcg !== \"\") {\n  ecg = \"'\" + String(item.anomaliaEcg).replace(/'/g, \"''\") + \"'\";\n}\n\nreturn [{\n  frecuenciaCardiaca: fc,\n  spo2: spo2,\n  anomaliaEcg: ecg,\n  paciente_id: pid\n}];"
+      },
+      "name": "Sanitizar Datos",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -2464,
+        -128
+      ],
+      "id": "3f3edc0e-b13b-4967-9cd7-0740e61f936f"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO telemetrias (\"frecuenciaCardiaca\", spo2, \"anomaliaEcg\", timestamp, \"estadoProcesamiento\", dispositivo_id) VALUES ({{ $json.frecuenciaCardiaca }}, {{ $json.spo2 }}, {{ $json.anomaliaEcg }}, NOW(), 'recibida', (SELECT id FROM dispositivos WHERE paciente_id = {{ $json.paciente_id }} AND activo = true LIMIT 1))",
+        "options": {}
+      },
+      "name": "INSERT Telemetria",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        -128
+      ],
+      "id": "80347878-bdc6-48e2-a80a-f7c1598150ce",
+      "credentials": {
+        "postgres": {
+          "id": "NhfPNyWM6q5WW3bU",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, \"tipoEvento\", detalle, exitoso, timestamp) VALUES (NULL, 'n8n_webhook_ok', concat('Telemetría paciente ', {{ $('Sanitizar Datos').item.json.paciente_id }}, ': FC=', {{ $('Sanitizar Datos').item.json.frecuenciaCardiaca }}, ', SpO2=', {{ $('Sanitizar Datos').item.json.spo2 }}), true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Webhook",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -2064,
+        -128
+      ],
+      "id": "6735bdbc-915b-4df5-8eae-ff5fc4c39be6",
+      "credentials": {
+        "postgres": {
+          "id": "NhfPNyWM6q5WW3bU",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://55d0-181-78-75-19.ngrok-free.app/predecir",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer dev-token-cambiar-en-prod"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $('Sanitizar Datos').item.json.paciente_id }}"
+            },
+            {
+              "name": "heart_rate",
+              "value": "={{ $('Sanitizar Datos').item.json.frecuenciaCardiaca }}"
+            },
+            {
+              "name": "spo2",
+              "value": "={{ $('Sanitizar Datos').item.json.spo2 }}"
+            },
+            {
+              "name": "explain",
+              "value": true
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "name": "Notificar Microservicio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1856,
+        -128
+      ],
+      "id": "3981dac3-405d-4039-95de-562e6ca00911"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-micro",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": {
+                "type": "number",
+                "operation": "eq"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF Micro OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1664,
+        -128
+      ],
+      "id": "233ce12d-2d89-4b66-ab7d-88b164c633cf"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, tipoEvento, detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_ok', 'Microservicio respondió OK', true, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Micro OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        -224
+      ],
+      "id": "2c30b305-dff7-4639-8ac5-816650293e02",
+      "credentials": {
+        "postgres": {
+          "id": "NhfPNyWM6q5WW3bU",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (triaje_id, \"tipoEvento\", detalle, exitoso, timestamp) VALUES (NULL, 'n8n_micro_error', 'Microservicio no disponible o error en evaluación', false, NOW())",
+        "options": {}
+      },
+      "name": "INSERT Log Micro Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        -32
+      ],
+      "id": "fdd4767a-7594-4f17-997c-88173eaf421a",
+      "credentials": {
+        "postgres": {
+          "id": "NhfPNyWM6q5WW3bU",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"ok\",\"mensaje\":\"Telemetría recibida y procesada\",\"timestamp\":\"{{ $now }}\", \"prioridad\": \"{{$('Notificar Microservicio').item.json.priority}}\", \"explicacion\":\"{{$('Notificar Microservicio').item.json.clinical_explanation}}\" }",
+        "options": {}
+      },
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -1264,
+        -128
+      ],
+      "id": "7bbad473-56fd-4399-a4d8-fc6c5e915208"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Telemetria": {
+      "main": [
+        [
+          {
+            "node": "Sanitizar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitizar Datos": {
+      "main": [
+        [
+          {
+            "node": "INSERT Telemetria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Telemetria": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Webhook": {
+      "main": [
+        [
+          {
+            "node": "Notificar Microservicio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar Microservicio": {
+      "main": [
+        [
+          {
+            "node": "IF Micro OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Micro OK": {
+      "main": [
+        [
+          {
+            "node": "INSERT Log Micro OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "INSERT Log Micro Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Micro OK": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT Log Micro Error": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "39ccd36b-072a-4d98-8529-564c6eed45f0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ab458b914fe6908e9d43cc01da753d997256f86621a9691669390115023db2d5"
+  },
+  "nodeGroups": [],
+  "id": "zrO0oNtmhEm3Ojbo",
+  "tags": []
+}
