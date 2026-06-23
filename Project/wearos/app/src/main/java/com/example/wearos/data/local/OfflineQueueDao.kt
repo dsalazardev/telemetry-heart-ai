@@ -20,6 +20,9 @@ interface OfflineQueueDao {
     @Query("SELECT COUNT(*) FROM offline_queue WHERE estado = 'pendiente'")
     suspend fun countPendiente(): Int
 
+    @Query("DELETE FROM offline_queue")
+    suspend fun deleteAll()
+
     @Query("DELETE FROM offline_queue WHERE id IN (SELECT id FROM offline_queue WHERE estado = 'pendiente' ORDER BY timestamp ASC LIMIT :limit)")
     suspend fun deleteOldest(limit: Int)
 }

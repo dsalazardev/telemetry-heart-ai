@@ -47,4 +47,27 @@ object HttpClient {
     fun createBackendApi(retrofit: Retrofit): BackendApi {
         return retrofit.create(BackendApi::class.java)
     }
+
+    fun createN8nClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    fun createN8nRetrofit(client: OkHttpClient): Retrofit {
+        val url = BuildConfig.TELEMETRY_URL
+        val baseUrl = if (url.endsWith("/")) url else "$url/"
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(client)
+            .addConverterFactory(json.asConverterFactory(jsonMediaType))
+            .build()
+    }
+
+    fun createN8nApi(retrofit: Retrofit): N8nApi {
+        return retrofit.create(N8nApi::class.java)
+    }
 }

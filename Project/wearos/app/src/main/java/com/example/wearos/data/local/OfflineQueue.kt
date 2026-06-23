@@ -48,6 +48,10 @@ class OfflineQueue(private val context: Context) {
         dao.updateStatus(id, estado, newIntentos, Instant.now().toString())
     }
 
+    suspend fun clearAll() {
+        dao.deleteAll()
+    }
+
     suspend fun retryPending(onSend: suspend (String) -> Boolean) {
         val pending = dequeue()
         for (entry in pending) {

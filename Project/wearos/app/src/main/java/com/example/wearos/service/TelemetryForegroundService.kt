@@ -26,6 +26,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.round
+import kotlin.random.Random
 import java.time.Instant
 
 class TelemetryForegroundService : Service() {
@@ -54,6 +56,7 @@ class TelemetryForegroundService : Service() {
         Log.i(TAG, "ForegroundService: onStartCommand")
         registerHealthListener()
         registerDeviceIfNeeded()
+        clearStaleOffline()
         startTelemetryLoop()
         return START_STICKY
     }
@@ -170,6 +173,13 @@ class TelemetryForegroundService : Service() {
         }
     }
 
+    private fun clearStaleOffline() {
+        serviceScope.launch {
+            app.offlineQueue.clearAll()
+            Log.i(TAG, "Stale offline queue cleared")
+        }
+    }
+
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
 
     private fun startTelemetryLoop() {
@@ -183,15 +193,25 @@ class TelemetryForegroundService : Service() {
                     val deviceId = app.tokenStorage.getDeviceId()
                     if (token != null && deviceId != null) {
                         app.authInterceptor.token = token
+                        val spo2Simulated = round((90.0 + Random.nextDouble() * 10.0) * 10.0) / 10.0
                         val sent = app.telemetryRepository.submitTelemetry(
                             frecuenciaCardiaca = hr,
-                            spo2 = null,
+                            spo2 = spo2Simulated,
                             timestamp = Instant.now().toString(),
                             dispositivoId = deviceId
                         )
                         if (sent) {
                             Log.i(TAG, "Telemetry sent: fc=$hr")
                         }
+                    }
+
+                    val pacienteId = app.tokenStorage.getPacienteId()
+                    if (pacienteId != null) {
+                        app.telemetryRepository.sendToN8n(
+                            pacienteId = pacienteId,
+                            frecuenciaCardiaca = hr,
+                            anomaliaEcg = "Prueba PoC"
+                        )
                     }
                 }
                 app.telemetryRepository.processOfflineQueue()

@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "functionCode": "const item = $json.body;\nconst fc = parseFloat(item.frecuenciaCardiaca);\nconst spo2 = parseFloat(item.spo2);\nconst pid = parseInt(item.paciente_id, 10);\n\nif (isNaN(fc) || isNaN(spo2) || isNaN(pid)) {\n  throw new Error(`Datos inválidos: FC=${item.frecuenciaCardiaca}, SpO2=${item.spo2}, paciente=${item.paciente_id}`);\n}\n\nlet ecg = \"NULL\";\nif (item.anomaliaEcg != null && item.anomaliaEcg !== \"\") {\n  ecg = \"'\" + String(item.anomaliaEcg).replace(/'/g, \"''\") + \"'\";\n}\n\nreturn [{\n  frecuenciaCardiaca: fc,\n  spo2: spo2,\n  anomaliaEcg: ecg,\n  paciente_id: pid\n}];"
+        "functionCode": "const item = $json.body.body;\nconst fc = parseFloat(item.frecuenciaCardiaca);\nconst spo2 = parseFloat(item.spo2);\nconst pid = parseInt(item.paciente_id, 10);\n\nif (isNaN(fc) || isNaN(spo2) || isNaN(pid)) {\n  throw new Error(`Datos inválidos: FC=${item.frecuenciaCardiaca}, SpO2=${item.spo2}, paciente=${item.paciente_id}`);\n}\n\nlet ecg = \"NULL\";\nif (item.anomaliaEcg != null && item.anomaliaEcg !== \"\") {\n  ecg = \"'\" + String(item.anomaliaEcg).replace(/'/g, \"''\") + \"'\";\n}\n\nreturn [{\n  frecuenciaCardiaca: fc,\n  spo2: spo2,\n  anomaliaEcg: ecg,\n  paciente_id: pid\n}];"
       },
       "name": "Sanitizar Datos",
       "type": "n8n-nodes-base.function",
@@ -76,7 +76,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://55d0-181-78-75-19.ngrok-free.app/predecir",
+        "url": "=https://9c7e-191-102-68-147.ngrok-free.app/predecir",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -315,7 +315,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "39ccd36b-072a-4d98-8529-564c6eed45f0",
+  "versionId": "4f3aa724-ab44-4a28-97f8-de9f62d1a1eb",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "ab458b914fe6908e9d43cc01da753d997256f86621a9691669390115023db2d5"
